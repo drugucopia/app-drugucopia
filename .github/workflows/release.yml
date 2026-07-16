@@ -162,7 +162,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.build-android.outputs.VERSION || '1.0.0' }}
           name: Release v${{ needs.build-android.outputs.VERSION || '1.0.0' }}
