@@ -150,6 +150,35 @@ ok "ARM linker environment configured"
 
 cd "$PROJECT_ROOT"
 
+GEN_ANDROID_DIR="$PROJECT_ROOT/src-tauri/gen/android"
+
+# Determine which config we're using and expected identifier
+if [ "$ACTION" = "dev" ]; then
+  EXPECTED_IDENTIFIER="com.drugucopiadev.app"
+  CONFIG_FILE="src-tauri/tauri.conf.dev.json"
+else
+  EXPECTED_IDENTIFIER="com.drugucopia.app"
+  CONFIG_FILE="src-tauri/tauri.conf.json"
+fi
+
+# Check if Android project exists and matches expected identifier
+if [ -d "$GEN_ANDROID_DIR" ]; then
+  BUILD_GRADLE="$GEN_ANDROID_DIR/app/build.gradle.kts"
+  if [ -f "$BUILD_GRADLE" ]; then
+    CURRENT_IDENTIFIER=$(grep -oP 'namespace\s*=\s*"\K[^"]+' "$BUILD_GRADLE" | head -1)
+    if [ "$CURRENT_IDENTIFIER" != "$EXPECTED_IDENTIFIER" ]; then
+      info "Android project identifier mismatch ($CURRENT_IDENTIFIER vs $EXPECTED_IDENTIFIER), regenerating..."
+      rm -rf "$GEN_ANDROID_DIR"
+    fi
+  fi
+fi
+
+# Initialize Android project if needed
+if [ ! -d "$GEN_ANDROID_DIR" ]; then
+  info "Initializing Android project for $EXPECTED_IDENTIFIER..."
+  npx tauri android init --config "$CONFIG_FILE"
+fi
+
 case "$ACTION" in
   dev)
     # Development-only recovery for stale native libraries. Release artifacts
@@ -175,12 +204,13 @@ case "$ACTION" in
     fi
 
     info "Starting Tauri Android development build..."
-    npx tauri android dev "${EXTRA_ARGS[@]}"
+    npx tauri android dev --config src-tauri/tauri.conf.dev.json "${EXTRA_ARGS[@]}"
     ;;
 
   build)
     info "Building release APK for ARM64 and ARMv7..."
     npx tauri android build \
+      --config "$CONFIG_FILE" \
       --apk \
       --target aarch64 \
       "${EXTRA_ARGS[@]}"

@@ -28,11 +28,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: '20'
-          cache: 'npm'
+          bun-version: latest
+          cache: true
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -62,15 +62,15 @@ jobs:
           shared-key: android-r27c-arm
           cache-on-failure: true
 
-      - name: Install build-tools 29.0.3 (for signing)
+      - name: Install build-tools 30.0.3 (for signing)
         run: |
-          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;30.0.3"
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: bun install
 
       - name: Build Next.js (for Android)
-        run: npm run build
+        run: bun run build
 
       - name: Setup sccache
         uses: Mozilla-Actions/sccache-action@v0.0.6

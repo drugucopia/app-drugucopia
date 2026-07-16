@@ -26,7 +26,8 @@ node_modules
 *.tsbuildinfo
 
 
-/src-tauri/target/
+src-tauri/target/
+src-tauri/gen/
 
 # next.js
 /.next/
