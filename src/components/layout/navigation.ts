@@ -10,6 +10,7 @@ import {
   Shield,
   Shuffle,
   Pill,
+  Settings,
 } from "lucide-react";
 
 export interface NavItem {
@@ -22,7 +23,8 @@ export interface NavItem {
     | "custom-substances"
     | "safety"
     | "changelog"
-    | "medications";
+    | "medications"
+    | "settings";
   href: string;
   label: string;
   icon: LucideIcon;
@@ -116,6 +118,14 @@ export const NAV_ITEMS: NavItem[] = [
     section: "info",
     color: "info",
   },
+  {
+    id: "settings",
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+    section: "info",
+    color: "success",
+  },
 ];
 
 export const NAV_SECTIONS: Array<{
@@ -152,6 +162,8 @@ export function isNavItemActive(item: NavItem, pathname: string) {
       return p.startsWith("/harm-reduction");
     case "changelog":
       return p.startsWith("/changelog");
+    case "settings":
+      return p.startsWith("/settings");
     default:
       return false;
   }

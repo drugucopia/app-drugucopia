@@ -2,8 +2,10 @@
 
 import { useEffect } from 'react'
 import { useReminderStore } from '@/store/reminder-store'
+import { useToleranceNotificationStore } from '@/store/tolerance-notification-store'
 import { startReminderEngine, stopReminderEngine } from '@/lib/reminder-engine'
 import { startTimelineNotifications, stopTimelineNotifications } from '@/lib/timeline-notifications'
+import { startToleranceNotifications, stopToleranceNotifications } from '@/lib/tolerance-notifications'
 import { preloadReminderSound } from '@/lib/sound-utils'
 import { shouldRegisterServiceWorker, shouldPlayWebSound, isTauri } from '@/lib/tauri-bridge'
 
@@ -22,75 +24,68 @@ let permissionPrompted = false
  */
 export function ReminderProvider({ children }: { children: React.ReactNode }) {
   const initialize = useReminderStore((s) => s.initialize)
+  const initializeTolerance = useToleranceNotificationStore((s) => s.initialize)
 
   useEffect(() => {
-    // 1. Initialize store from localStorage
+    // Initialize both stores
     const cleanup = initialize()
+    initializeTolerance()
 
-    // 2. Start the reminder engine (1-second tick loop)
+    // Preload sound for web (Tauri uses OS sound)
+    if (shouldPlayWebSound()) {
+      preloadReminderSound()
+    }
+
+    // Start all notification engines
     startReminderEngine()
-
-    // 2c. Start the timeline phase notification engine (checks every 30s)
     startTimelineNotifications()
+    startToleranceNotifications()
+
+    // Service Worker registration (web only)
+    if (shouldRegisterServiceWorker() && !isTauri()) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then(() => console.log('[SW] Registered'))
+        .catch((e) => console.warn('[SW] Registration failed:', e))
+    }
 
     // 2b. Async: check Tauri native notification permission and update store.
-    //     Also request permission if not yet decided (Android/iOS need an
-    //     explicit prompt — the browser "default" state doesn't exist on mobile).
     if (typeof window !== 'undefined') {
-      import('@/lib/notification-utils').then(async ({ checkNotificationPermissionStatus, requestNotificationPermission }) => {
-        const currentPerm = await checkNotificationPermissionStatus()
+      import('@/lib/notification-utils').then(
+        async ({ checkNotificationPermissionStatus, requestNotificationPermission }) => {
+          const currentPerm = await checkNotificationPermissionStatus()
 
-        // Update store with the real permission state
-        if (currentPerm && currentPerm !== useReminderStore.getState().notificationPermission) {
-          useReminderStore.getState().setNotificationPermission(currentPerm)
-        }
+          // Update store with the real permission state
+          if (
+            currentPerm &&
+            currentPerm !== useReminderStore.getState().notificationPermission
+          ) {
+            useReminderStore.getState().setNotificationPermission(currentPerm)
+          }
 
-        // In Tauri (mobile), auto-request permission on first launch if not decided.
-        // On Android, the OS shows a system dialog — this is the only way to get
-        // "granted" status. On web, browsers require a user gesture, so we skip
-        // auto-request there (the Reminder Settings button handles it).
-        if (isTauri() && currentPerm === 'default' && !permissionPrompted) {
-          permissionPrompted = true
-          try {
-            const result = await requestNotificationPermission()
-            useReminderStore.getState().setNotificationPermission(result)
-          } catch {
-            // User denied or prompt failed — non-critical
+          // In Tauri (mobile), auto-request permission on first launch if not decided.
+          if (isTauri() && currentPerm === 'default' && !permissionPrompted) {
+            permissionPrompted = true
+            try {
+              const result = await requestNotificationPermission()
+              useReminderStore.getState().setNotificationPermission(result)
+            } catch {
+              // User denied or prompt failed — non-critical
+            }
           }
         }
-      }).catch(() => {
+      ).catch(() => {
         // Non-critical — the sync check is sufficient for web
       })
-    }
-
-    // 3. Register Service Worker for background notifications (web only)
-    if (shouldRegisterServiceWorker()) {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
-          // SW registration failure is non-critical — in-app reminders still work
-          console.warn('SW registration failed (reminders still work in-app):', err?.message)
-        })
-      }
-    }
-
-    // 4. Preload notification sound on first user interaction (web only)
-    //    In Tauri, the OS notification system plays its own sound.
-    if (shouldPlayWebSound()) {
-      const onFirstInteraction = () => {
-        preloadReminderSound()
-        document.removeEventListener('click', onFirstInteraction)
-        document.removeEventListener('keydown', onFirstInteraction)
-      }
-      document.addEventListener('click', onFirstInteraction)
-      document.addEventListener('keydown', onFirstInteraction)
     }
 
     return () => {
       stopReminderEngine()
       stopTimelineNotifications()
+      stopToleranceNotifications()
       cleanup?.()
     }
-  }, [initialize])
+  }, [initialize, initializeTolerance])
 
   return <>{children}</>
 }
