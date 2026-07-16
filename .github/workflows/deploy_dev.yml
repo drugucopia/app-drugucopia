@@ -65,7 +65,9 @@ jobs:
         run: bun run build
 
       - name: Setup sccache
-        uses: Mozilla-Actions/sccache-action@v0.0.6
+        uses: Mozilla-Actions/sccache-action@v0.0.10
+        with:
+          version: "latest"
 
       - name: Build Android APK
         run: bash scripts/android.sh build --ci
@@ -73,6 +75,7 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
           RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
           
       - name: Find APK/AAB output
         run: |
