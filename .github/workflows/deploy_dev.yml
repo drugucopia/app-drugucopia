@@ -58,10 +58,6 @@ jobs:
           shared-key: android-r27c-arm
           cache-on-failure: true
 
-      - name: Install build-tools 29.0.3 (for signing - zipalign)
-        run: |
-          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
-
       - name: Install dependencies
         run: bun install
 
@@ -84,34 +80,24 @@ jobs:
           find src-tauri/gen/android -name "*.apk" -o -name "*.aab" | head -20
           find src-tauri/target -name "*.apk" -o -name "*.aab" 2>/dev/null | head -20
 
-      - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: src-tauri/gen/android/app/build/outputs/apk/universal/release
-          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
-      - name: Prepare signed APK
+      - name: Find unsigned APK for artifact
         run: |
-          # Find the signed APK
-          SIGNED_APK=$(find . -name "*unsigned-signed.apk" | head -1)
-          if [ -z "$SIGNED_APK" ]; then
-            echo "No signed APK found"
+          # Find the unsigned release APK
+          UNSIGNED_APK=$(find src-tauri/gen/android -name "*universal-release-unsigned.apk" | head -1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "No unsigned APK found"
             exit 1
           fi
-          echo "Found signed APK: $SIGNED_APK"
+          echo "Found unsigned APK: $UNSIGNED_APK"
           
           # Get version from package.json
           VERSION=$(node -e "const p=require('./package.json'); console.log(p.version)")
-          echo "VERSION=$VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           
           # Copy and rename
           mkdir -p release-apk
-          cp "$SIGNED_APK" "release-apk/drugucopia-mobile-${VERSION}.apk"
-          echo "Created: release-apk/drugucopia-mobile-${VERSION}.apk"
+          cp "$UNSIGNED_APK" "release-apk/drugucopia-mobile-${VERSION}-unsigned.apk"
+          echo "Created: release-apk/drugucopia-mobile-${VERSION}-unsigned.apk"
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4

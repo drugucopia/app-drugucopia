@@ -62,9 +62,13 @@ jobs:
           shared-key: android-r27c-arm
           cache-on-failure: true
 
-      - name: Install build-tools 29.0.3 (for signing - zipalign)
+      - name: Install build-tools 29.0.3 (for zipalign)
         run: |
           ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
+
+      - name: Install build-tools 34.0.0 (for apksigner - PKCS12 support)
+        run: |
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
 
       - name: Install dependencies
         run: bun install
