@@ -1,0 +1,122 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: ['*']
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          ndk-version: r27c
+          cache-key: android-sdk
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: android-r27c-arm
+          cache-on-failure: true
+
+      - name: Install build-tools 29.0.3 (for signing)
+        run: |
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Next.js (for Android)
+        run: npm run build
+
+      - name: Setup sccache
+        uses: Mozilla-Actions/sccache-action@v0.0.6
+
+      - name: Build Android APK
+        run: bash scripts/android.sh build --ci
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          RUSTC_WRAPPER: sccache
+          
+      - name: Find APK/AAB output
+        run: |
+          echo "Searching for APK/AAB files..."
+          find src-tauri/gen/android -name "*.apk" -o -name "*.aab" | head -20
+          find src-tauri/target -name "*.apk" -o -name "*.aab" 2>/dev/null | head -20
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: src-tauri/gen/android/app/build/outputs/apk/universal/release
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Prepare signed APK
+        run: |
+          # Find the signed APK
+          SIGNED_APK=$(find . -name "*unsigned-signed.apk" | head -1)
+          if [ -z "$SIGNED_APK" ]; then
+            echo "No signed APK found"
+            exit 1
+          fi
+          echo "Found signed APK: $SIGNED_APK"
+          
+          # Get version from package.json
+          VERSION=$(node -e "const p=require('./package.json'); console.log(p.version)")
+          echo "VERSION=$VERSION"
+          
+          # Copy and rename
+          mkdir -p release-apk
+          cp "$SIGNED_APK" "release-apk/drugucopia-mobile-${VERSION}.apk"
+          echo "Created: release-apk/drugucopia-mobile-${VERSION}.apk"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: |
+            release-apk/*.apk
+          retention-days: 7
