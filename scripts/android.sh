@@ -33,7 +33,7 @@ NC='\033[0m'
 
 info() { echo -e "${CYAN}[android]${NC} $*"; }
 ok()   { echo -e "${GREEN}[android]${NC} $*"; }
-die()  { echo -e "${RED}[android]${NC} $*\" >&2; exit 1; }
+die()  { echo -e "${RED}[android]${NC} $*" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
