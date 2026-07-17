@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const isGithubActions = process.env.GITHUB_ACTIONS === "true";
+const isGithubActions = process.env.GITHUB_ACTIONS === "false";
 
 if (isGithubActions) {
   const required = [

@@ -2,7 +2,15 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
-import { getFirestore, type Firestore, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  getFirestore,
+  type Firestore,
+  initializeFirestore,
+  doc,
+  onSnapshot,
+  setDoc,
+  serverTimestamp,
+} from 'firebase/firestore'
 import { toast } from '../hooks/use-toast'
 import { useDoseStore } from '../store/dose-store'
 import { useReminderStore } from '../store/reminder-store'
@@ -62,8 +70,30 @@ function getDb(): Firestore | null {
   }
   try {
     _app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
-    _db = getFirestore(_app)
-    console.debug('[sync] Firebase initialized successfully, project:', firebaseConfig.projectId)
+
+    // Use initializeFirestore() instead of getFirestore() so we can pass
+    // experimentalAutoDetectLongPolling. Firebase defaults to WebSocket for
+    // onSnapshot, which is blocked by many corporate/cellular networks and
+    // some browser/CSP configurations — causing the 15s "sync connection
+    // timeout" with no error callback. Auto-detect falls back to HTTP
+    // long-polling when WebSocket fails or is unreachable.
+    try {
+      _db = initializeFirestore(_app, {
+        experimentalAutoDetectLongPolling: true,
+        // Don't force long-polling — let the SDK try WebSocket first, then
+        // fall back. Forcing long-polling adds ~100ms latency per snapshot.
+      })
+    } catch (initErr) {
+      // initializeFirestore throws if getFirestore was already called for
+      // this app (e.g. by HMR in dev). Fall back to getFirestore, which
+      // returns the existing instance.
+      console.debug('[sync] initializeFirestore fell back to getFirestore (likely HMR):', initErr)
+      _db = getFirestore(_app)
+    }
+    console.debug(
+      '[sync] Firebase initialized successfully, project:', firebaseConfig.projectId,
+      'longPolling: auto-detect',
+    )
     return _db
   } catch (e) {
     console.warn('Firebase initialization failed', e, 'config presence:', getFirebaseConfigDebug())
@@ -1189,22 +1219,29 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         connectTimeoutRef.current = null
       }
 
-      // Timeout: if Firestore doesn't respond within 15s (network blocked, bad config, CSP, offline), show error instead of endless connecting
+      // Timeout: if Firestore doesn't respond within 30s, show error instead
+      // of endless connecting.
+      //
+      // Why 30s (was 15s): a brand-new Firestore database in "production mode"
+      // can take 20-25 seconds to provision the first onSnapshot listener.
+      // 15s was too aggressive and gave false-positive timeouts on cold starts.
+      // 30s is still short enough that a real network failure is surfaced
+      // before the user gives up.
       connectTimeoutRef.current = setTimeout(() => {
         if (syncStatusRef.current === 'connecting' && !initialSyncDoneRef.current) {
           const missing = getMissingFirebaseKeys()
           const debug = getFirebaseConfigDebug()
-          console.error('[sync] Connection timeout after 15s - no snapshot received. Firebase present:', debug, 'missing:', missing)
+          console.error('[sync] Connection timeout after 30s - no snapshot received. Firebase present:', debug, 'missing:', missing)
           setSyncStatus('error')
           toast({
             title: 'Sync connection timeout',
             description: missing.length > 0
               ? `Build missing Firebase config (${missing.join(', ')}). Rebuild with env vars from GitHub secrets.`
-              : `No response from Firestore after 15s. Check internet, Firestore rules, and CSP. Project: ${firebaseConfig.projectId || 'unknown'}`,
+              : `No response from Firestore after 30s. Most common fixes: (1) create the Firestore database in Firebase Console (it is NOT auto-created), (2) deploy firestore.rules from the repo, (3) check that you are not on a network blocking WebSockets. Project: ${firebaseConfig.projectId || 'unknown'}`,
             variant: 'destructive',
           })
         }
-      }, 15000)
+      }, 30000)
 
       unsubscribeRef.current = onSnapshot(docRef, {
         next: async (docSnap) => {
@@ -1234,7 +1271,28 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           }
           console.error('[sync] Firestore snapshot error:', err)
           setSyncStatus('error')
-          toast({ title: 'Sync Error', description: `Lost connection: ${err.message.substring(0, 100)}`, variant: 'destructive' })
+          // Surface the Firestore error code so the user can act on it.
+          // Common codes:
+          //   - permission-denied: rules block access → deploy firestore.rules
+          //   - not-found: database doesn't exist → create it in Firebase Console
+          //   - unavailable: temporarily down or region issue → retry later
+          //   - unauthenticated: this code path doesn't use Firebase Auth,
+          //     so this usually means the project ID is wrong
+          const code = (err as { code?: string })?.code || ''
+          const msg = err instanceof Error ? err.message : String(err)
+          let hint = ''
+          if (code.includes('permission-denied') || msg.includes('PERMISSION_DENIED')) {
+            hint = ' Firestore rules block access. Deploy firestore.rules from the repo: firebase deploy --only firestore:rules'
+          } else if (code.includes('not-found')) {
+            hint = ' Firestore database not created. Go to Firebase Console → Firestore Database → Create database.'
+          } else if (code.includes('unauthenticated')) {
+            hint = ' Project ID may be wrong. Verify NEXT_PUBLIC_FIREBASE_PROJECT_ID.'
+          }
+          toast({
+            title: 'Sync Error',
+            description: `Lost connection: ${msg.substring(0, 100)}${hint}`,
+            variant: 'destructive',
+          })
         }
       })
 

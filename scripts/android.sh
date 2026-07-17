@@ -163,6 +163,41 @@ ok "ARM linker environment configured"
 
 cd "$PROJECT_ROOT"
 
+# ─── 4.5. Load .env / .env.local so Firebase vars are visible to this script
+#        AND to subprocesses (next build, tauri, gradle). Without this, the
+#        "Checking Firebase env vars" step below prints false-positive warnings
+#        because the shell doesn't auto-load Next.js env files. ───
+load_env_file() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  info "Loading env vars from: $file"
+  # Parse line by line. We do NOT use `source` because .env files can contain
+  # values with spaces, special chars, or quotes that would be re-interpreted
+  # by the shell. This parser only handles KEY=value pairs and skips comments.
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    # Skip blank lines and comments
+    case "$key" in
+      ''|\#*) continue ;;
+    esac
+    # Trim leading whitespace from key
+    key="${key#"${key%%[![:space:]]*}"}"
+    # Strip any surrounding quotes from value (single or double)
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    # Only set if not already in the environment (explicit exports win)
+    if [ -z "${!key:-}" ]; then
+      export "$key=$value"
+    fi
+  done < "$file"
+}
+
+# Load order matches Next.js: .env.local overrides .env (but we don't override
+# already-set shell vars, so explicit `export FOO=bar` always wins).
+load_env_file "$PROJECT_ROOT/.env"
+load_env_file "$PROJECT_ROOT/.env.local"
+
 GEN_ANDROID_DIR="$PROJECT_ROOT/src-tauri/gen/android"
 
 # Determine which config we're using and expected identifier
