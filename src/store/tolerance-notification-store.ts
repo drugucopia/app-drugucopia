@@ -9,6 +9,8 @@ export interface ToleranceNotificationSettings {
   notifyOnBaseline: boolean;
   notificationCooldownMinutes: number;
   checkIntervalMinutes: number;
+  enabledSubstances: Record<string, boolean>;
+  substanceThresholds: Record<string, { notifyOnHigh?: boolean; notifyOnLow?: boolean; notifyOnBaseline?: boolean }>;
 }
 
 export const DEFAULT_SETTINGS: ToleranceNotificationSettings = {
@@ -18,9 +20,11 @@ export const DEFAULT_SETTINGS: ToleranceNotificationSettings = {
   notifyOnBaseline: false,
   notificationCooldownMinutes: 1440, // 24 hours default
   checkIntervalMinutes: 1440, // 24 hours default
+  enabledSubstances: {},
+  substanceThresholds: {},
 };
 
-function loadSettings(): ToleranceNotificationSettings {
+export function loadSettings(): ToleranceNotificationSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -29,6 +33,8 @@ function loadSettings(): ToleranceNotificationSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      enabledSubstances: parsed.enabledSubstances ?? {},
+      substanceThresholds: parsed.substanceThresholds ?? {},
       notificationCooldownMinutes: Math.max(1, Math.min(10080, parsed.notificationCooldownMinutes ?? 1440)),
       checkIntervalMinutes: Math.max(15, Math.min(10080, parsed.checkIntervalMinutes ?? 1440)),
     };
@@ -72,6 +78,8 @@ export const useToleranceNotificationStore = create<ToleranceNotificationState>(
               settings: {
                 ...DEFAULT_SETTINGS,
                 ...parsed,
+                enabledSubstances: parsed.enabledSubstances ?? {},
+                substanceThresholds: parsed.substanceThresholds ?? {},
                 notificationCooldownMinutes: Math.max(1, Math.min(10080, parsed.notificationCooldownMinutes ?? 1440)),
                 checkIntervalMinutes: Math.max(15, Math.min(10080, parsed.checkIntervalMinutes ?? 1440)),
               },

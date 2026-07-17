@@ -109,13 +109,100 @@ describe('Tolerance Half-Life Data', () => {
 describe('Tolerance Notification Store', () => {
   // These tests verify the store structure - actual store tests
   // would require zustand testing utilities
-  it('has correct default settings', () => {
-    const { DEFAULT_SETTINGS } = require('@/store/tolerance-notification-store')
+  it('has correct default settings', async () => {
+    const { DEFAULT_SETTINGS } = await import('@/store/tolerance-notification-store')
     expect(DEFAULT_SETTINGS.enabled).toBe(true)
     expect(DEFAULT_SETTINGS.notifyOnHigh).toBe(true)
     expect(DEFAULT_SETTINGS.notifyOnLow).toBe(false)
     expect(DEFAULT_SETTINGS.notifyOnBaseline).toBe(false)
     expect(DEFAULT_SETTINGS.notificationCooldownMinutes).toBe(1440)
     expect(DEFAULT_SETTINGS.checkIntervalMinutes).toBe(1440)
+  })
+
+  it('has per-substance defaults in DEFAULT_SETTINGS', async () => {
+    const { DEFAULT_SETTINGS } = await import('@/store/tolerance-notification-store')
+    expect(DEFAULT_SETTINGS.enabledSubstances).toEqual({})
+    expect(DEFAULT_SETTINGS.substanceThresholds).toEqual({})
+  })
+})
+
+describe('loadSettings migration', () => {
+  const originalLocalStorage = global.localStorage
+
+  beforeEach(() => {
+    global.localStorage = {
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    } as unknown as Storage
+  })
+
+  afterEach(() => {
+    global.localStorage = originalLocalStorage
+    vi.clearAllMocks()
+  })
+
+  it('migrates old settings without per-substance fields', async () => {
+    const { loadSettings } = await import('@/store/tolerance-notification-store')
+    
+    ;(localStorage.getItem as vi.Mock).mockReturnValue(JSON.stringify({
+      enabled: false,
+      notifyOnHigh: true,
+      notifyOnLow: true,
+      notifyOnBaseline: false,
+      notificationCooldownMinutes: 720,
+      checkIntervalMinutes: 720,
+    }))
+
+    const settings = loadSettings()
+
+    expect(settings.enabled).toBe(false)
+    expect(settings.notifyOnHigh).toBe(true)
+    expect(settings.notifyOnLow).toBe(true)
+    expect(settings.notifyOnBaseline).toBe(false)
+    expect(settings.notificationCooldownMinutes).toBe(720)
+    expect(settings.checkIntervalMinutes).toBe(720)
+    expect(settings.enabledSubstances).toEqual({})
+    expect(settings.substanceThresholds).toEqual({})
+  })
+
+  it('preserves per-substance fields when present in storage', async () => {
+    const { loadSettings } = await import('@/store/tolerance-notification-store')
+    
+    ;(localStorage.getItem as vi.Mock).mockReturnValue(JSON.stringify({
+      enabled: true,
+      notifyOnHigh: true,
+      notifyOnLow: false,
+      notifyOnBaseline: false,
+      notificationCooldownMinutes: 1440,
+      checkIntervalMinutes: 1440,
+      enabledSubstances: { caffeine: true, alcohol: false },
+      substanceThresholds: { caffeine: { notifyOnHigh: true, notifyOnLow: false } },
+    }))
+
+    const settings = loadSettings()
+
+    expect(settings.enabledSubstances).toEqual({ caffeine: true, alcohol: false })
+    expect(settings.substanceThresholds).toEqual({ caffeine: { notifyOnHigh: true, notifyOnLow: false } })
+  })
+
+  it('handles partial per-substance fields gracefully', async () => {
+    const { loadSettings } = await import('@/store/tolerance-notification-store')
+    
+    ;(localStorage.getItem as vi.Mock).mockReturnValue(JSON.stringify({
+      enabled: true,
+      notifyOnHigh: true,
+      notifyOnLow: false,
+      notifyOnBaseline: false,
+      notificationCooldownMinutes: 1440,
+      checkIntervalMinutes: 1440,
+      enabledSubstances: { caffeine: true },
+    }))
+
+    const settings = loadSettings()
+
+    expect(settings.enabledSubstances).toEqual({ caffeine: true })
+    expect(settings.substanceThresholds).toEqual({})
   })
 })
