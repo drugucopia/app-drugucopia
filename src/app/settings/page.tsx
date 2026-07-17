@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { Collapse } from '@/components/ui/collapse'
 import { Bell, BellOff, Plus, Trash2, Pencil, ShieldCheck, ShieldAlert, Play, Volume2, VolumeX, AlertTriangle, Search, X } from 'lucide-react'
 import { useReminderStore } from '@/store/reminder-store'
 import { askNotificationPermission } from '@/lib/reminder-engine'
@@ -26,6 +27,7 @@ import { toast } from '@/hooks/use-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useToleranceNotificationStore } from '@/store/tolerance-notification-store'
+import { SubstanceSelectionList } from '@/components/SubstanceSelectionList'
 
 // ─── Category dots (matches Header & dose-logger-modal) ─────────────────────
 const CATEGORY_DOTS: Record<string, string> = {
@@ -757,6 +759,7 @@ function ToleranceNotificationSettingsSection() {
   const notificationPermission = useReminderStore(
     (s) => s.notificationPermission,
   )
+  const [substanceExpanded, setSubstanceExpanded] = useState(false)
 
   // Initialize on mount
   useEffect(() => {
@@ -905,6 +908,23 @@ function ToleranceNotificationSettingsSection() {
             </p>
           </div>
         </div>
+
+        <div className="divider my-1" />
+
+        {/* Substance Selection - Collapsible */}
+        <Collapse open={substanceExpanded}>
+          <div className="pt-2">
+            <SubstanceSelectionList />
+          </div>
+        </Collapse>
+        <Button
+          variant="ghost"
+          className="w-full justify-between"
+          onClick={() => setSubstanceExpanded(!substanceExpanded)}
+        >
+          <span>Substance Selection</span>
+          {substanceExpanded ? '▼' : '▶'}
+        </Button>
 
         {/* Test button */}
         <div className="pt-2">
