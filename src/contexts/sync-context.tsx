@@ -2,7 +2,15 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
-import { getFirestore, type Firestore, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  getFirestore,
+  initializeFirestore,
+  type Firestore,
+  doc,
+  onSnapshot,
+  setDoc,
+  serverTimestamp,
+} from 'firebase/firestore'
 import { toast } from '../hooks/use-toast'
 import { useDoseStore } from '../store/dose-store'
 import { useReminderStore } from '../store/reminder-store'
@@ -63,9 +71,20 @@ function getDb(): Firestore | null {
   try {
     _app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
 
-    _db = getFirestore(_app)
+    // Android's production WebView can fail to establish Firestore's
+    // WebChannel stream even though the same app works in development. Use
+    // HTTP long-polling for Tauri builds; it is more reliable on mobile
+    // networks and avoids the 30-second "no response" timeout. Keep the
+    // default transport in browsers and desktop web builds.
+    _db = isTauri()
+      ? initializeFirestore(_app, {
+          experimentalForceLongPolling: true,
+          useFetchStreams: false,
+        })
+      : getFirestore(_app)
     console.debug(
       '[sync] Firebase initialized successfully, project:', firebaseConfig.projectId,
+      'transport:', isTauri() ? 'long-polling' : 'default',
     )
     return _db
   } catch (e) {
@@ -906,8 +925,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   // Timeout guard to prevent endless "connecting" - if Firestore never calls back (no network, bad config, blocked CSP etc)
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Identifies the currently active listener. Firestore can deliver a queued
+  // callback after unsubscribe (especially with long-polling); stale callbacks
+  // must not turn a timed-out/replaced connection back into "synced".
+  const connectionAttemptRef = useRef(0)
 
   const connectToSync = useCallback(async (rId?: string, pass?: string) => {
+    const connectionAttempt = ++connectionAttemptRef.current
     const effectiveRId = rId ?? roomIdRef.current
     const effectivePass = pass ?? passwordRef.current
     if (!effectiveRId || !effectivePass) return
@@ -1201,7 +1225,16 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       // 30s is still short enough that a real network failure is surfaced
       // before the user gives up.
       connectTimeoutRef.current = setTimeout(() => {
-        if (syncStatusRef.current === 'connecting' && !initialSyncDoneRef.current) {
+        if (
+          connectionAttemptRef.current === connectionAttempt &&
+          syncStatusRef.current === 'connecting' &&
+          !initialSyncDoneRef.current
+        ) {
+          // Stop accepting callbacks from this attempt. Without this guard a
+          // late snapshot can set the UI to "synced" after the timeout while
+          // the user still has no working sync session.
+          unsubscribeRef.current?.()
+          unsubscribeRef.current = null
           const missing = getMissingFirebaseKeys()
           const debug = getFirebaseConfigDebug()
           console.error('[sync] Connection timeout after 30s - no snapshot received. Firebase present:', debug, 'missing:', missing)
@@ -1218,6 +1251,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
       unsubscribeRef.current = onSnapshot(docRef, {
         next: async (docSnap) => {
+          if (connectionAttemptRef.current !== connectionAttempt) return
           // First successful snapshot - clear timeout
           if (connectTimeoutRef.current) {
             clearTimeout(connectTimeoutRef.current)
@@ -1238,6 +1272,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           processSnapshot(docSnap)
         },
         error: (err) => {
+          if (connectionAttemptRef.current !== connectionAttempt) return
           if (connectTimeoutRef.current) {
             clearTimeout(connectTimeoutRef.current)
             connectTimeoutRef.current = null
@@ -1300,6 +1335,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   ])
 
   const disconnectSync = useCallback(() => {
+    // Invalidate callbacks already queued by the previous listener.
+    connectionAttemptRef.current += 1
     if (unsubscribeRef.current) unsubscribeRef.current()
     unsubscribeRef.current = null
     if (connectTimeoutRef.current) {

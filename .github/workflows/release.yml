@@ -2,7 +2,7 @@ name: Build & Release (main branch only)
 
 on:
   push:
-    branches: ['main']
+    branches: ['tolremind']
   workflow_dispatch:
 
 permissions:
