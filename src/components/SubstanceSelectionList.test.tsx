@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { SubstanceSelectionList } from '@/components/SubstanceSelectionList';
 import { useToleranceNotificationStore } from '@/store/tolerance-notification-store';
 import { getAllSubstances } from '@/lib/substances';
@@ -27,6 +27,7 @@ describe('SubstanceSelectionList', () => {
         substanceThresholds: { caffeine: { notifyOnHigh: false } },
       },
       updateSettings: vi.fn(),
+      isLoaded: true,
     });
   });
 
@@ -49,6 +50,7 @@ describe('SubstanceSelectionList', () => {
     (useToleranceNotificationStore as vi.Mock).mockReturnValue({
       settings: { enabledSubstances: {}, substanceThresholds: {}, notifyOnHigh: true, notifyOnLow: false, notifyOnBaseline: false },
       updateSettings,
+      isLoaded: true,
     });
     render(<SubstanceSelectionList />);
     fireEvent.click(screen.getByLabelText('MDMA'));
@@ -74,5 +76,66 @@ it('shows override dropdowns when expanded', () => {
     const select = openDetails?.querySelector('select') as HTMLSelectElement;
     expect(select).toBeInTheDocument();
     expect(select).toHaveValue('off'); // override set to false
+  });
+
+  it('shows loading spinner while store is hydrating', () => {
+    (useToleranceNotificationStore as vi.Mock).mockReturnValue({
+      settings: {
+        enabled: true,
+        notifyOnHigh: true,
+        notifyOnLow: false,
+        notifyOnBaseline: false,
+        notificationCooldownMinutes: 1440,
+        checkIntervalMinutes: 1440,
+        enabledSubstances: {},
+        substanceThresholds: {},
+      },
+      updateSettings: vi.fn(),
+      isLoaded: false,
+    });
+    render(<SubstanceSelectionList />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveClass('flex');
+  });
+
+  it('shows "Select all visible" button when search results exist', () => {
+    render(<SubstanceSelectionList />);
+    fireEvent.change(screen.getByPlaceholderText('Search substances...'), { target: { value: 'caffeine' } });
+    expect(screen.getByRole('button', { name: /select all visible/i })).toBeInTheDocument();
+  });
+
+  it('enables all visible substances when "Select all visible" is clicked', () => {
+    const updateSettings = vi.fn();
+    (useToleranceNotificationStore as vi.Mock).mockReturnValue({
+      settings: {
+        enabled: true,
+        notifyOnHigh: true,
+        notifyOnLow: false,
+        notifyOnBaseline: false,
+        notificationCooldownMinutes: 1440,
+        checkIntervalMinutes: 1440,
+        enabledSubstances: {},
+        substanceThresholds: {},
+      },
+      updateSettings,
+      isLoaded: true,
+    });
+    render(<SubstanceSelectionList />);
+    fireEvent.change(screen.getByPlaceholderText('Search substances...'), { target: { value: 'caffeine' } });
+    fireEvent.click(screen.getByRole('button', { name: /select all visible/i }));
+    expect(updateSettings).toHaveBeenCalledWith({
+      enabledSubstances: { caffeine: true },
+    });
+  });
+
+  it('includes custom substances from localStorage in grouping', () => {
+    const customSubstances = [
+      { id: 'caffeine', name: 'Caffeine', commonNames: ['Coffee'], categories: ['stimulants'] },
+      { id: 'custom-1', name: 'Custom Substance', commonNames: [], categories: ['other'] },
+    ];
+    (getAllSubstances as vi.Mock).mockReturnValue(customSubstances);
+    render(<SubstanceSelectionList />);
+    expect(screen.getByText('Other')).toBeInTheDocument();
+    expect(screen.getByText('Custom Substance')).toBeInTheDocument();
   });
 });

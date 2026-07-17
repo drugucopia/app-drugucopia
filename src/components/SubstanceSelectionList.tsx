@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { CheckSquare, Square } from 'lucide-react';
 import { useToleranceNotificationStore } from '@/store/tolerance-notification-store';
 import { getAllSubstances, type Substance } from '@/lib/substances';
 import { Button } from '@/components/ui/button';
@@ -36,7 +37,7 @@ const OVERRIDE_OPTIONS: OverrideOption[] = [
 ];
 
 export function SubstanceSelectionList() {
-  const { settings, updateSettings } = useToleranceNotificationStore();
+  const { settings, updateSettings, isLoaded } = useToleranceNotificationStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -67,6 +68,10 @@ export function SubstanceSelectionList() {
     }
     return filtered;
   }, [grouped, searchQuery]);
+
+  if (!isLoaded) {
+    return <div className="flex justify-center py-8" role="status"><span className="loading loading-spinner loading-lg" /></div>;
+  }
 
   const toggleSubstance = (id: string) => {
     updateSettings({
@@ -108,6 +113,19 @@ export function SubstanceSelectionList() {
     setExpandedIds(next);
   };
 
+  const selectAllVisible = () => {
+    const visibleIds: string[] = [];
+    for (const subs of Object.values(filteredGroups)) {
+      for (const s of subs) {
+        visibleIds.push(s.id);
+      }
+    }
+    if (visibleIds.length === 0) return;
+    updateSettings({
+      enabledSubstances: { ...settings.enabledSubstances, ...Object.fromEntries(visibleIds.map((id) => [id, true])) },
+    });
+  };
+
   const categoryLabel = (cat: string) =>
     cat.charAt(0).toUpperCase() + cat.slice(1).replace(/-/g, ' ');
 
@@ -127,6 +145,18 @@ export function SubstanceSelectionList() {
         onChange={(e) => setSearchQuery(e.target.value)}
         className="w-full max-w-xs"
       />
+
+      {searchQuery.trim() && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full max-w-xs"
+          onClick={selectAllVisible}
+        >
+          <CheckSquare className="w-4 h-4 mr-2" />
+          Select all visible
+        </Button>
+      )}
 
       {Object.entries(filteredGroups).map(([cat, subs]) => (
         <div key={cat} className="space-y-2">
