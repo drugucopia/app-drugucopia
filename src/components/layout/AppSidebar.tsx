@@ -114,35 +114,31 @@ export function AppSidebar({ expanded, onNavigate, onToggle }: AppSidebarProps) 
 
                 return (
                   <li key={item.id} className="w-full">
-                    <div
-                      className={cn(!expanded && 'tooltip tooltip-right w-full')}
+                    <button
+                      type="button"
+                      onClick={() => navigate(item.href)}
+                      className={cn(
+                        // Layout: icon + label on ONE line, centered
+                        // both horizontally and vertically. Override
+                        // daisyUI .menu defaults which left-align.
+                        'flex w-full items-center justify-center gap-2 min-h-11 px-2 rounded-md transition-colors',
+                        // Icon/text color: each item uses its assigned
+                        // semantic color. Active = full opacity + bg
+                        // tint + ring; inactive = 70% opacity so the
+                        // color is still visible but recedes.
+                        isActive
+                          ? cn(colorClass.active, 'lg:ring-1')
+                          : colorClass.inactive,
+                        !expanded && 'lg:!px-1.5 lg:!gap-0',
+                      )}
+                      title={item.label}
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={item.label}
                       data-tip={!expanded ? item.label : undefined}
                     >
-                      <button
-                        type="button"
-                        onClick={() => navigate(item.href)}
-                        className={cn(
-                          // Layout: icon + label on ONE line, centered
-                          // both horizontally and vertically. Override
-                          // daisyUI .menu defaults which left-align.
-                          'flex w-full items-center justify-center gap-2 min-h-11 px-2 rounded-md transition-colors',
-                          // Icon/text color: each item uses its assigned
-                          // semantic color. Active = full opacity + bg
-                          // tint + ring; inactive = 70% opacity so the
-                          // color is still visible but recedes.
-                          isActive
-                            ? cn(colorClass.active, 'lg:ring-1')
-                            : colorClass.inactive,
-                          !expanded && 'lg:!px-1.5 lg:!gap-0',
-                        )}
-                        title={item.label}
-                        aria-current={isActive ? 'page' : undefined}
-                        aria-label={item.label}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className={cn(!expanded && 'lg:hidden')}>{item.label}</span>
-                      </button>
-                    </div>
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className={cn(!expanded && 'lg:hidden')}>{item.label}</span>
+                    </button>
                   </li>
                 )
               })}

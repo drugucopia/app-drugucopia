@@ -182,6 +182,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
             <div className="flex min-h-[100dvh]">
               <AppSidebar
                 expanded={sidebarExpanded}
+                onNavigate={() => {}} // no-op for desktop, but keeps prop consistent
                 onToggle={toggleSidebar}
               />
               <div className="flex min-w-0 flex-1 flex-col">

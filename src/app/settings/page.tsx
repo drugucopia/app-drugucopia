@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { Collapse, CollapseTitle, CollapseContent } from '@/components/ui/collapse'
 import { Bell, BellOff, Plus, Trash2, Pencil, ShieldCheck, ShieldAlert, Play, Volume2, VolumeX, AlertTriangle, Search, X } from 'lucide-react'
 import { useReminderStore } from '@/store/reminder-store'
 import { askNotificationPermission } from '@/lib/reminder-engine'
@@ -26,6 +27,7 @@ import { toast } from '@/hooks/use-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useToleranceNotificationStore } from '@/store/tolerance-notification-store'
+import { SubstanceSelectionList } from '@/components/SubstanceSelectionList'
 
 // ─── Category dots (matches Header & dose-logger-modal) ─────────────────────
 const CATEGORY_DOTS: Record<string, string> = {
@@ -648,8 +650,8 @@ function ReminderSettingsSection() {
                 <div
                   key={s.id}
                   className={`flex items-center justify-between gap-2 rounded-lg border p-2.5 transition-colors ${s.enabled
-                      ? 'border-base-300'
-                      : 'border-base-300/50 opacity-60'
+                    ? 'border-base-300'
+                    : 'border-base-300/50 opacity-60'
                     }`}
                 >
                   <div className="min-w-0 flex-1">
@@ -808,7 +810,7 @@ function ToleranceNotificationSettingsSection() {
         {/* Trigger settings */}
         <div className="space-y-3">
           <h4 className="text-xs font-medium text-neutral-content uppercase tracking-wide">Notify when tolerance reaches</h4>
-          
+
           <label className="flex items-center justify-between gap-3 cursor-pointer">
             <div>
               <p className="text-sm font-medium">High / Very High</p>
@@ -906,6 +908,18 @@ function ToleranceNotificationSettingsSection() {
           </div>
         </div>
 
+        <div className="divider my-1" />
+
+        {/* Substance Selection - Collapsible */}
+        <Collapse>
+          <CollapseTitle className="text-sm font-medium">
+            Substance Selection
+          </CollapseTitle>
+          <CollapseContent>
+            <SubstanceSelectionList />
+          </CollapseContent>
+        </Collapse>
+
         {/* Test button */}
         <div className="pt-2">
           <Button
@@ -914,8 +928,20 @@ function ToleranceNotificationSettingsSection() {
             className="gap-1"
             onClick={async () => {
               const { forceToleranceCheck } = await import('@/lib/tolerance-notifications')
-              await forceToleranceCheck()
-              toast({ title: 'Test check triggered' })
+              const result = await forceToleranceCheck()
+              if (result.sent) {
+                const names = result.triggered.map((t) => `${t.substanceName} (${t.pct}%)`).join(', ')
+                toast({
+                  title: `Tolerance notification sent (${result.triggered.length})`,
+                  description: names,
+                })
+              } else {
+                toast({
+                  title: 'No notification sent',
+                  description: result.reason || 'Nothing triggered.',
+                  variant: 'destructive',
+                })
+              }
             }}
           >
             <Play className="h-3.5 w-3.5" />

@@ -25,6 +25,9 @@ node_modules
 
 *.tsbuildinfo
 
+docs/
+playwright-report/
+test-results/
 
 src-tauri/target/
 src-tauri/gen/

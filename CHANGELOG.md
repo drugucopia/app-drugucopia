@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.9] - 2026-07-17
+
+### Added
+- Substance Selection for tolerance notifications
+
+### Changed
+- Tolerance notifications arent turned on for every substance, you now have to select the ones you want updates on.
+
+### Fixed
+- Tolerance notifications making multiple notifications
+
+
 ## [0.1.8] - 2026-07-16
 
 ### Added
