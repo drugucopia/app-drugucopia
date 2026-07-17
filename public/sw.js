@@ -22,7 +22,7 @@
 
 // Bump this when changing the precache list or fetch strategy.
 // The activate handler drops any cache with a different version.
-const CACHE_VERSION = 'drugucopia-v7'
+const CACHE_VERSION = 'drugucopia-v8'
 const PRECACHE_NAME = `${CACHE_VERSION}-precache`
 const RUNTIME_NAME = `${CACHE_VERSION}-runtime`
 
