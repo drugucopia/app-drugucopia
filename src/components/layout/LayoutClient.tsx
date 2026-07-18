@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from 'lucide-react'
 import { useState, useEffect, useSyncExternalStore, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
 import { AppSidebar } from './AppSidebar'
 import { TopBar } from './TopBar'
 import { BottomNav } from './BottomNav'
@@ -11,10 +12,14 @@ import { MilkdropBackgroundWrapper } from '@/components/milkdrop-background-wrap
 import { SyncProvider } from '@/contexts/sync-context'
 import { ReminderProvider } from '@/components/reminder-provider'
 import { CommandPalette } from '@/components/command-palette'
-import { DoseLoggerModal } from '@/components/dose-logger-modal'
 import { OnboardingTour } from '@/components/onboarding-tour'
 import { UpdateCheckPopupWrapper } from '@/components/update-check-popup-wrapper'
 import { useUIStore } from '@/store/ui-store'
+
+// Keep the logger out of the shell while closed. The module is warmed during
+// idle time below so the first deliberate open is normally instant.
+const loadDoseLogger = () => import('@/components/dose-logger-modal').then((mod) => mod.DoseLoggerModal)
+const DoseLoggerModal = dynamic(loadDoseLogger, { ssr: false, loading: () => null })
 
 interface LayoutClientProps {
   children: ReactNode
@@ -36,6 +41,22 @@ export function LayoutClient({ children }: LayoutClientProps) {
   )
   const [isMobile, setIsMobile] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
+
+  // Warm the chunk without mounting its large form, effects, or store
+  // subscriptions. requestIdleCallback is unavailable in some WebViews.
+  useEffect(() => {
+    const warm = () => { void loadDoseLogger() }
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    if (idleWindow.requestIdleCallback) {
+      const id = idleWindow.requestIdleCallback(warm, { timeout: 2500 })
+      return () => idleWindow.cancelIdleCallback?.(id)
+    }
+    const id = window.setTimeout(warm, 1200)
+    return () => window.clearTimeout(id)
+  }, [])
 
   // Onboarding tour: auto-open on first visit (when the localStorage
   // flag `drugucopia-tour-complete` is unset). Re-triggerable via the
@@ -182,7 +203,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
             <div className="flex min-h-[100dvh]">
               <AppSidebar
                 expanded={sidebarExpanded}
-                onNavigate={() => {}} // no-op for desktop, but keeps prop consistent
+                onNavigate={() => { }} // no-op for desktop, but keeps prop consistent
                 onToggle={toggleSidebar}
               />
               <div className="flex min-w-0 flex-1 flex-col">
@@ -210,14 +231,16 @@ export function LayoutClient({ children }: LayoutClientProps) {
             </div>
           )}
 
-          <DoseLoggerModal
-            open={doseLoggerOpen}
-            onOpenChange={(open) => !open && closeDoseLogger()}
-            preselectedSubstanceId={doseLoggerPreselect?.substanceId}
-            preselectedSubstanceName={doseLoggerPreselect?.substanceName}
-            preselectedCategory={doseLoggerPreselect?.category}
-            preselectedRoute={doseLoggerPreselect?.route}
-          />
+          {doseLoggerOpen && (
+            <DoseLoggerModal
+              open
+              onOpenChange={(open) => !open && closeDoseLogger()}
+              preselectedSubstanceId={doseLoggerPreselect?.substanceId}
+              preselectedSubstanceName={doseLoggerPreselect?.substanceName}
+              preselectedCategory={doseLoggerPreselect?.category}
+              preselectedRoute={doseLoggerPreselect?.route}
+            />
+          )}
           <CommandPalette />
           {!isMobile && <VisualizerControls />}
           <Toaster />

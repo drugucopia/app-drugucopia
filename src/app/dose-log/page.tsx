@@ -59,10 +59,17 @@ function TrackHero() {
   const activeReminders = useReminderStore((state) => state.activeReminders)
 
   const todayKey = new Date().toISOString().slice(0, 10)
-  const todayCount = useMemo(
-    () => doses.filter((dose) => dose.timestamp.slice(0, 10) === todayKey).length,
-    [doses, todayKey],
-  )
+  const todayCount = useMemo(() => {
+    // Dose store writes are newest-first. Stop as soon as we pass today's
+    // UTC key instead of filtering a potentially very large history.
+    let count = 0
+    for (const dose of doses) {
+      const doseDay = dose.timestamp.slice(0, 10)
+      if (doseDay === todayKey) count++
+      else if (doseDay < todayKey) break
+    }
+    return count
+  }, [doses, todayKey])
   const activeCount = useMemo(
     () => activeReminders.filter((reminder) => reminder.status !== 'dismissed').length,
     [activeReminders],

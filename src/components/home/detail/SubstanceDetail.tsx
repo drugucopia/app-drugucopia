@@ -9,7 +9,6 @@ import { SubstanceQuickFacts } from './SubstanceQuickFacts'
 interface SubstanceDetailProps {
   substance: Substance
   onBack: () => void
-  onDoseLogged: () => void
   onCategoryClick?: (category: SubstanceCategory) => void
   router: ReturnType<typeof import('next/navigation').useRouter>
 }
@@ -34,7 +33,6 @@ interface SubstanceDetailProps {
 export function SubstanceDetail({
   substance,
   onBack,
-  onDoseLogged,
   onCategoryClick,
   router,
 }: SubstanceDetailProps) {
@@ -51,7 +49,6 @@ export function SubstanceDetail({
         substance={substance}
         selectedRoute={selectedRoute}
         onBack={onBack}
-        onDoseLogged={onDoseLogged}
         onCategoryClick={onCategoryClick}
       />
 

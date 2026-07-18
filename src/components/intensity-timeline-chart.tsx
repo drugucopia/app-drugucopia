@@ -21,7 +21,7 @@
  *   • Expandable per-dose phase details
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { format } from 'date-fns'
 import Link from 'next/link'
 import {
@@ -315,12 +315,22 @@ function PhaseSparkline({
 
 /** Build enriched substance groups from raw doses — same logic as old component. */
 function computeGroups(doses: ReturnType<typeof useDoseStore.getState>['doses']): SubstanceGroup[] {
+  const now = Date.now()
+  // Phase calculation/classification is much more expensive than a timestamp
+  // check. A duration range is parsed as its midpoint, so retain up to twice
+  // its declared total (the maximum possible range endpoint), plus a one-day
+  // safety floor for incomplete/custom data.
+  const MIN_CANDIDATE_WINDOW_MINS = 24 * 60
+
   // Step 1: filter + enrich
   const baseDoses: EnrichedDose[] = doses
     .filter(d => {
       if (!d.duration) return false
       const totalMins = parseDurationToMinutes(d.duration.total ?? '')
-      return totalMins > 0
+      if (totalMins <= 0) return false
+      const elapsedMins = (now - safeDate(d.timestamp).getTime()) / 60_000
+      const candidateWindow = Math.max(MIN_CANDIDATE_WINDOW_MINS, totalMins * 2)
+      return elapsedMins < candidateWindow + ENDED_DOSE_RETENTION_MINS
     })
     .map(d => {
       const doseTime = safeDate(d.timestamp)
@@ -349,7 +359,6 @@ function computeGroups(doses: ReturnType<typeof useDoseStore.getState>['doses'])
     .sort((a, b) => a.doseTime.getTime() - b.doseTime.getTime())
 
   // Step 2: filter to active/recently-ended + group by substance → route
-  const now = Date.now()
   const activeDoses = baseDoses.filter(d => {
     const elapsedMins = (now - d.doseTime.getTime()) / 60_000
     return elapsedMins < d.timings.offsetEnd + ENDED_DOSE_RETENTION_MINS
@@ -495,7 +504,7 @@ export function IntensityTimelineChart() {
     return () => clearInterval(id)
   }, [])
 
-  const groups = useMemo(() => computeGroups(doses), [doses, nowTs])
+  const groups = useMemo(() => computeGroups(doses), [doses])
 
   // Pass through to children as a stable callback. Returns a hex color
   // suitable for inline styles (the old version returned a Tailwind class
@@ -598,8 +607,8 @@ export function IntensityTimelineChart() {
                 key={opt.label}
                 onClick={() => setWindowHours(opt.hours)}
                 className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${isActive
-                    ? 'bg-primary text-primary-content'
-                    : 'text-neutral-content hover:text-base-content hover:bg-base-300/50'
+                  ? 'bg-primary text-primary-content'
+                  : 'text-neutral-content hover:text-base-content hover:bg-base-300/50'
                   }`}
               >
                 {opt.label}
@@ -658,6 +667,17 @@ function GroupCard({
   // browser has computed the parent's layout (which triggers a 0×0 warning).
   const [mounted, setMounted] = useState(false)
 
+  const nowRef = useRef(nowTs)
+
+  // Keep nowRef.current in sync with nowTs prop
+  useEffect(() => {
+    nowRef.current = nowTs
+  }, [nowTs])
+
+  // Sliding window override - updates every minute when windowHours is set
+  // This allows the X-axis domain to slide without recomputing chart data.
+  const [slidingWindowOverride, setSlidingWindowOverride] = useState<{ startMs: number; endMs: number } | null>(null)
+
   useEffect(() => {
     setMounted(true)
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -665,6 +685,24 @@ function GroupCard({
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  // Timer for sliding window - only runs when windowHours is set
+  useEffect(() => {
+    if (windowHours === null) {
+      setSlidingWindowOverride(null)
+      return
+    }
+    // Initial value
+    const updateWindow = () => {
+      const endMs = nowRef.current
+      const startMs = endMs - windowHours * 60 * 60 * 1000
+      setSlidingWindowOverride({ startMs, endMs })
+    }
+    updateWindow()
+    const id = setInterval(updateWindow, 60_000)
+    return () => clearInterval(id)
+  }, [windowHours])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setState in effect is intentional for timer
 
   // Filter visible routes based on isolation
   const visibleRoutes: RouteGroup[] = useMemo(() => {
@@ -683,28 +721,17 @@ function GroupCard({
   }, [group, selectedRoute, selectedDose])
 
   const sampleCount = isMobile ? 40 : 120
-  // 2.1: compute the window override from the zoom selector. When windowHours
-  // is set, clamp to [now - hours, now]. The override is memoized separately
-  // from the chart config so the config memo only invalidates when the
-  // override actually changes (not on every 60s tick).
-  const windowOverride = useMemo(() => {
-    if (windowHours === null) return null
-    const endMs = nowTs
-    const startMs = endMs - windowHours * 60 * 60 * 1000
-    return { startMs, endMs }
-  }, [windowHours, nowTs])
+  // Window override: uses slidingWindowOverride when in zoom mode, null for auto-fit
+  const windowOverride = slidingWindowOverride
 
-  // Fix 3.2: buildChartConfig is pure — it does NOT depend on nowTs, so this
-  // memo is stable across the 60s tick. Only the now-line position (which
-  // reads nowTs directly in JSX below) updates every minute.
-  // Note: when windowHours is set, the override DOES depend on nowTs (the
-  // window slides with time), so the config will recompute on each tick —
-  // that's intentional and correct for a "last N hours" view.
+  // Chart config is stable - does NOT depend on nowTs.
+  // The now-indicator reads nowRef.current directly in JSX.
   const config = useMemo(
     () => buildChartConfig(group, visibleRoutes, sampleCount, windowOverride),
     [group, visibleRoutes, sampleCount, windowOverride],
   )
 
+  // Time-dependent values for header badges - use nowTs prop so they update every minute
   const now = nowTs
   const primaryDose = group.primary
   // Fix 5.1: use the shared getPhaseStatus() instead of a local re-implementation.
@@ -912,10 +939,10 @@ function GroupCard({
                   key={`${rg.route}-${doseId}`}
                   onClick={() => onDoseClick(doseId)}
                   className={`relative inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border transition-all overflow-hidden ${isIsolated
-                      ? 'ring-2 ring-purple-500/50 border-purple-500/50 bg-purple-500/10'
-                      : isDoseEnded
-                        ? 'border-base-300/50 opacity-50'
-                        : 'border-base-300 hover:border-base-300/80'
+                    ? 'ring-2 ring-purple-500/50 border-purple-500/50 bg-purple-500/10'
+                    : isDoseEnded
+                      ? 'border-base-300/50 opacity-50'
+                      : 'border-base-300 hover:border-base-300/80'
                     }`}
                   style={{ color: palette.stroke }}
                 >
@@ -1192,15 +1219,16 @@ function GroupCard({
                     cursor={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1, strokeDasharray: '4 4' }}
                   />
 
-                  {/* Now indicator — position comes from nowTs prop, NOT from
+                  {/* Now indicator — position comes from nowRef.current, NOT from
                   config (which is memoized and stable across ticks).
                   The pulsing dot is rendered as a custom SVG label inside
                   the ReferenceLine so it's in the same coordinate space as
                   the dashed line (guarantees perfect horizontal alignment).
                   Uses SVG <animate> instead of CSS (4.2). */}
-                  {nowTs >= config.windowStartMs && nowTs <= config.windowEndMs && (
+                  {nowRef.current >= config.windowStartMs && nowRef.current <= config.windowEndMs && (
                     <ReferenceLine
-                      x={nowTs}
+                      x={nowRef.current}
+                      // eslint-disable-next-line react-hooks/rules-of-hooks -- ref access in JSX is intentional for live now-indicator
                       stroke={NOW_INDICATOR.color}
                       strokeWidth={NOW_INDICATOR.strokeWidth}
                       strokeDasharray={NOW_INDICATOR.dashArray}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useDebounce } from '@/hooks/use-debounce'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,7 @@ import { useMedia } from 'react-use'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { AlcoholCalculatorFields } from '@/components/alcohol-calculator-fields'
+import { useShallow } from 'zustand/react/shallow'
 
 interface DoseLoggerModalProps {
   open?: boolean
@@ -634,13 +636,13 @@ export function formatUnit(unit: string, amount: number): string {
 }
 
 const EMPTY_DOSES: DoseLog[] = []
-
 function highlightMatch(text: string, query: string) {
   if (!query.trim()) return text
   const lower = text.toLowerCase()
   const lowerQuery = query.toLowerCase().trim()
   const index = lower.indexOf(lowerQuery)
   if (index === -1) return text
+
   return (
     <>
       {text.slice(0, index)}
@@ -648,6 +650,87 @@ function highlightMatch(text: string, query: string) {
       {text.slice(index + lowerQuery.length)}
     </>
   )
+}
+
+// ─── Module-level memoized substance options getter ──────────────────────────
+// Avoids rebuilding the full 380+ substance list on every render.
+// Recomputes only when custom substances or medications actually change.
+// Uses getState() to read stores without subscribing (no re-renders).
+const builtinSubstanceById = new Map(substances.map((substance) => [substance.id, substance]))
+let substanceOptionsCache: { options: ComboboxOption[]; signature: string } | null = null
+
+export function getSubstanceOptions(): ComboboxOption[] {
+  // Guard against SSR - stores use localStorage which isn't available on server
+  if (typeof window === 'undefined') {
+    // Return just built-in substances on server
+    const opts: ComboboxOption[] = substances.map(s => ({
+      value: s.id,
+      label: s.name,
+      keywords: [s.name, ...(s.commonNames || []), ...(s.aliases || [])],
+    }))
+    return opts.sort((a, b) => a.label.localeCompare(b.label))
+  }
+
+  const customSubstances = useCustomSubstanceStore.getState().substances
+  const medications = useMedicationStore.getState().medications
+  const activeMedications = medications.filter(m => m.isActive)
+
+  // Counts alone miss renames, dosage edits, and alias/category changes. A
+  // compact content signature preserves the cache without serving stale options.
+  const signature = JSON.stringify({
+    custom: customSubstances.map((substance) => [substance.id, substance.name, substance.category]),
+    medications: activeMedications.map((medication) => [
+      medication.id, medication.name, medication.dosage, medication.genericName,
+      medication.medicationType, medication.linkedSubstanceId,
+    ]),
+  })
+
+  if (substanceOptionsCache?.signature === signature) return substanceOptionsCache.options
+
+  const builtinIds = new Set(substances.map(s => s.id))
+  const opts: ComboboxOption[] = []
+
+  // Built-in substances
+  for (const s of substances) {
+    opts.push({
+      value: s.id,
+      label: s.name,
+      keywords: [s.name, ...(s.commonNames || []), ...(s.aliases || [])],
+    })
+  }
+
+  // Custom substances
+  for (const cs of customSubstances) {
+    if (builtinIds.has(cs.id)) continue
+    opts.push({
+      value: cs.id,
+      label: `[Custom] ${cs.name}`,
+      keywords: [cs.name],
+    })
+  }
+
+  // Active medications
+  for (const m of activeMedications) {
+    if (m.linkedSubstanceId && builtinIds.has(m.linkedSubstanceId) && m.name === builtinSubstanceById.get(m.linkedSubstanceId)?.name) {
+      continue
+    }
+    const id = toMedicationSelectorId(m.id)
+    const label = `[Rx] ${m.name}${m.dosage ? ` (${m.dosage})` : ''}`
+    opts.push({
+      value: id,
+      label,
+      keywords: [m.name, ...(m.genericName ? [m.genericName] : []), ...(m.medicationType ? [m.medicationType] : [])],
+    })
+  }
+
+  const sorted = opts.sort((a, b) => a.label.localeCompare(b.label))
+  substanceOptionsCache = { options: sorted, signature }
+  return sorted
+}
+
+// Reset cache when stores change (called from component effect)
+export function resetSubstanceOptionsCache() {
+  substanceOptionsCache = null
 }
 
 export function DoseLoggerModal({
@@ -705,14 +788,16 @@ export function DoseLoggerModal({
   }, [handleClose])
 
   const [loading, setLoading] = useState(false)
-  const doses = useDoseStore(s => open ? s.doses : EMPTY_DOSES)
+  const doses = useDoseStore(useShallow(s => open ? { doses: s.doses } : { doses: EMPTY_DOSES })).doses
   const addDose = useDoseStore(s => s.addDose)
 
   // A1 — favorites from UI store. initializeFavorites runs once on mount
   // to lazy-load from localStorage (avoids SSR hydration mismatch).
-  const favoriteSubstances = useUIStore(s => s.favoriteSubstances)
-  const toggleFavorite = useUIStore(s => s.toggleFavorite)
-  const initializeFavorites = useUIStore(s => s.initializeFavorites)
+  const { favoriteSubstances, toggleFavorite, initializeFavorites } = useUIStore(useShallow(s => ({
+    favoriteSubstances: s.favoriteSubstances,
+    toggleFavorite: s.toggleFavorite,
+    initializeFavorites: s.initializeFavorites,
+  })))
   useEffect(() => { initializeFavorites() }, [initializeFavorites])
 
   // Medication profile — used for two things:
@@ -722,16 +807,20 @@ export function DoseLoggerModal({
   //   2. The interaction-warning section checks the selected substance
   //      against active medications (not just against active doses) and
   //      surfaces a separate warning panel for medication interactions.
-  const medications = useMedicationStore(s => s.medications)
-  const initializeMedications = useMedicationStore(s => s.initialize)
+  const { medications, initialize: initializeMedications } = useMedicationStore(useShallow(s => ({
+    medications: s.medications,
+    initialize: s.initialize,
+  })))
   useEffect(() => { initializeMedications() }, [initializeMedications])
   const activeMedications = useMemo(() => medications.filter(m => m.isActive), [medications])
 
   // Custom substances from the custom-substance store. These are
   // user-defined substances that live in localStorage and are merged
   // with the built-in DB for the substance selector.
-  const customSubstances = useCustomSubstanceStore(s => s.substances)
-  const initializeCustomSubstances = useCustomSubstanceStore(s => s.initialize)
+  const { substances: customSubstances, initialize: initializeCustomSubstances } = useCustomSubstanceStore(useShallow(s => ({
+    substances: s.substances,
+    initialize: s.initialize,
+  })))
   useEffect(() => { initializeCustomSubstances() }, [initializeCustomSubstances])
 
   // Helper: merge built-in substances with custom substances so the
@@ -766,6 +855,7 @@ export function DoseLoggerModal({
 
   const [quickInput, setQuickInput] = useState('')
   const [quickInputSubstanceQuery, setQuickInputSubstanceQuery] = useState('')
+  const debouncedSearchQuery = useDebounce(quickInputSubstanceQuery, 150)
   const [mathResult, setMathResult] = useState<{ result: number; unit: string; expression: string } | null>(null)
   const quickInputRef = useRef<HTMLInputElement>(null)
   const [showQuickSuggestions, setShowQuickSuggestions] = useState(false)
@@ -890,9 +980,9 @@ export function DoseLoggerModal({
   }, [])
 
   const quickSuggestions = useMemo(() => {
-    if (!quickInputSubstanceQuery.trim() || !showQuickSuggestions) return []
-    return searchSubstancesRanked(quickInputSubstanceQuery, { limit: 6 })
-  }, [quickInputSubstanceQuery, showQuickSuggestions])
+    if (!debouncedSearchQuery.trim() || !showQuickSuggestions) return []
+    return searchSubstancesRanked(debouncedSearchQuery, { limit: 6 })
+  }, [debouncedSearchQuery, showQuickSuggestions])
 
   // A2: "log same as last time" — tapping a recent chip pre-fills the
   // substance, amount, unit, and route from the user's most recent log
@@ -1130,58 +1220,28 @@ export function DoseLoggerModal({
 
     // Use the shared engine. We pass the medSubstances as extras so
     // `med-<uuid>` IDs resolve correctly.
-    const result = checkInteractionsEngine(allIds, medSubstances)
+    const result = checkInteractionsEngine(allIds)
 
     return result.pairs.filter(p => p.severity !== 'low-risk')
   }, [selectedSubstance, activeMedications])
 
   /**
-   * Substance selector options.
-   *
-   * Combines four sources, each tagged so the UI can render a badge:
-   *   - Built-in substances (no tag — the default)
-   *   - Custom substances from the custom-substance store (tagged `[Custom]`)
-   *   - Active medications from the medication profile (namespaced
-   *     with `med-<uuid>`, tagged `[Rx]`)
-   *
-   * The Combobox component doesn't natively support per-option badges,
-   * so we encode the kind in the label: medications get a `[Rx]` prefix
-   * and custom substances get a `[Custom]` prefix. The search box still
-   * matches against the underlying name.
-   */
-  const substanceOptions: ComboboxOption[] = useMemo(() => {
-    const builtinIds = new Set(substances.map(s => s.id))
-    const opts: ComboboxOption[] = allSubstances.map(s => {
-      const isCustom = !builtinIds.has(s.id)
-      return {
-        value: s.id,
-        label: isCustom ? `[Custom] ${s.name}` : s.name,
-        keywords: [s.name, ...(s.commonNames || []), ...(s.aliases || [])],
-      }
-    })
-
-    // Append active medications as `med-<uuid>` options so users can
-    // log a dose of their prescription directly. Skip medications
-    // that are already represented by a linked built-in substance to
-    // avoid clutter (the user can just pick the substance itself).
-    for (const m of activeMedications) {
-      // If the medication is linked to a built-in substance AND the
-      // user hasn't renamed it, skip — the built-in entry already
-      // covers this case.
-      if (m.linkedSubstanceId && builtinIds.has(m.linkedSubstanceId) && m.name === allSubstances.find(s => s.id === m.linkedSubstanceId)?.name) {
-        continue
-      }
-      const id = toMedicationSelectorId(m.id)
-      const label = `[Rx] ${m.name}${m.dosage ? ` (${m.dosage})` : ''}`
-      opts.push({
-        value: id,
-        label,
-        keywords: [m.name, ...(m.genericName ? [m.genericName] : []), ...(m.medicationType ? [m.medicationType] : [])],
-      })
-    }
-
-    return opts.sort((a, b) => a.label.localeCompare(b.label))
-  }, [allSubstances, substances, activeMedications])
+     * Substance selector options.
+     *
+     * Combines four sources, each tagged so the UI can render a badge:
+     *   - Built-in substances (no tag — the default)
+     *   - Custom substances from the custom-substance store (tagged `[Custom]`)
+     *   - Active medications from the medication profile (namespaced
+     *     with `med-<uuid>`, tagged `[Rx]`)
+     *
+     * The Combobox component doesn't natively support per-option badges,
+     * so we encode the kind in the label: medications get a `[Rx]` prefix
+     * and custom substances get a `[Custom]` prefix. The search box still
+     * matches against the underlying name.
+     *
+     * Uses module-level memoized getter to avoid rebuilding on every render.
+     */
+  const substanceOptions: ComboboxOption[] = getSubstanceOptions()
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value

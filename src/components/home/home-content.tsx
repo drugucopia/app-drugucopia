@@ -106,8 +106,6 @@ export function HomeContent() {
     return result
   }, [selectedCategory, deferredQuery])
 
-  const handleDoseLogged = useCallback(() => { }, [])
-
   const handleSelectSubstance = useCallback(
     (substance: Substance) => {
       setSelectedSubstance(substance)
@@ -136,7 +134,6 @@ export function HomeContent() {
       <SubstanceDetail
         substance={selectedSubstance}
         onBack={handleBackFromDetail}
-        onDoseLogged={handleDoseLogged}
         onCategoryClick={handleCategoryClickFromDetail}
         router={router}
       />
