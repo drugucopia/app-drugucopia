@@ -315,12 +315,21 @@ function PhaseSparkline({
 
 /** Build enriched substance groups from raw doses — same logic as old component. */
 function computeGroups(doses: ReturnType<typeof useDoseStore.getState>['doses']): SubstanceGroup[] {
+  const now = Date.now()
+  // Phase calculation/classification is much more expensive than a timestamp
+  // check. Keep a generous recent window, and retain older records only when
+  // their declared duration could still put them on the live timeline.
+  const RECENT_CANDIDATE_WINDOW_MINS = 7 * 24 * 60
+
   // Step 1: filter + enrich
   const baseDoses: EnrichedDose[] = doses
     .filter(d => {
       if (!d.duration) return false
       const totalMins = parseDurationToMinutes(d.duration.total ?? '')
-      return totalMins > 0
+      if (totalMins <= 0) return false
+      const elapsedMins = (now - safeDate(d.timestamp).getTime()) / 60_000
+      return elapsedMins < RECENT_CANDIDATE_WINDOW_MINS ||
+        elapsedMins < totalMins + ENDED_DOSE_RETENTION_MINS
     })
     .map(d => {
       const doseTime = safeDate(d.timestamp)
@@ -349,7 +358,6 @@ function computeGroups(doses: ReturnType<typeof useDoseStore.getState>['doses'])
     .sort((a, b) => a.doseTime.getTime() - b.doseTime.getTime())
 
   // Step 2: filter to active/recently-ended + group by substance → route
-  const now = Date.now()
   const activeDoses = baseDoses.filter(d => {
     const elapsedMins = (now - d.doseTime.getTime()) / 60_000
     return elapsedMins < d.timings.offsetEnd + ENDED_DOSE_RETENTION_MINS
@@ -598,8 +606,8 @@ export function IntensityTimelineChart() {
                 key={opt.label}
                 onClick={() => setWindowHours(opt.hours)}
                 className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${isActive
-                    ? 'bg-primary text-primary-content'
-                    : 'text-neutral-content hover:text-base-content hover:bg-base-300/50'
+                  ? 'bg-primary text-primary-content'
+                  : 'text-neutral-content hover:text-base-content hover:bg-base-300/50'
                   }`}
               >
                 {opt.label}
@@ -930,10 +938,10 @@ function GroupCard({
                   key={`${rg.route}-${doseId}`}
                   onClick={() => onDoseClick(doseId)}
                   className={`relative inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border transition-all overflow-hidden ${isIsolated
-                      ? 'ring-2 ring-purple-500/50 border-purple-500/50 bg-purple-500/10'
-                      : isDoseEnded
-                        ? 'border-base-300/50 opacity-50'
-                        : 'border-base-300 hover:border-base-300/80'
+                    ? 'ring-2 ring-purple-500/50 border-purple-500/50 bg-purple-500/10'
+                    : isDoseEnded
+                      ? 'border-base-300/50 opacity-50'
+                      : 'border-base-300 hover:border-base-300/80'
                     }`}
                   style={{ color: palette.stroke }}
                 >
