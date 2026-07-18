@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Wine, Scale, Beaker, Info, ArrowRightLeft } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -53,6 +53,15 @@ export function AlcoholCalculatorFields({
     const abv = beveragePreset?.abv ?? 40
     return shotsToGrams({ shots: drinkCount, shotVolumeMl: volumeMl, abv })
   }, [drinkCount, shotSize, beveragePreset])
+
+  // Auto-convert to grams on mount and when drinkCount changes (from parent)
+  useEffect(() => {
+    if (conversionResult && drinkCount > 0) {
+      const roundedGrams = roundTo(conversionResult.ethanolGrams, 2)
+      onAmountChange(String(roundedGrams))
+      onUnitChange('g')
+    }
+  }, [conversionResult, drinkCount, onAmountChange, onUnitChange])
 
   // ─── Handle drink count change ────────────────────────────────────────────
   const handleDrinkCountChange = (value: number) => {
