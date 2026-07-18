@@ -839,9 +839,9 @@ export function estimateTolerance(doses: DoseLog[]): ToleranceEstimate[] {
 
     let levelLabel: ToleranceEstimate["level"];
     if (level < 0.05) levelLabel = "baseline";
-    else if (level < 0.2) levelLabel = "low";
-    else if (level < 0.5) levelLabel = "moderate";
-    else if (level < 0.75) levelLabel = "high";
+    else if (level < 0.25) levelLabel = "low";
+    else if (level < 0.45) levelLabel = "moderate";
+    else if (level < 0.65) levelLabel = "high";
     else levelLabel = "very-high";
 
     const dosesLast30Days = subsDoses.filter(
