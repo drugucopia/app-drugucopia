@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.10] - 2026-07-18
+
+### Changed
+- tol target parity with site
+
 ## [0.2.9] - 2026-07-18
 
 ### Changed
