@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+(globalThis as any).jest = vi;
 import React from 'react';
 import '@testing-library/jest-dom';
 
@@ -35,6 +37,7 @@ jest.mock('@/store/dose-store', () => ({
       initialize: jest.fn(),
       deleteDose: jest.fn(),
       updateDose: jest.fn(),
+      clearAllDoses: jest.fn(),
     }),
     subscribe: jest.fn(),
   },
@@ -349,7 +352,7 @@ jest.mock('@/components/ui/label', () => ({
 }));
 
 jest.mock('@/components/ui/select', () => ({
-  Select: mockComponent('Select'),
+  Select: ({ children, ...props }: any) => React.createElement('select', { 'data-testid': 'select', ...props }, children),
   SelectTrigger: mockComponent('SelectTrigger'),
   SelectValue: mockComponent('SelectValue'),
   SelectContent: mockComponent('SelectContent'),
@@ -388,7 +391,7 @@ jest.mock('@/components/ui/scroll-area', () => ({
 jest.mock('lucide-react', () => {
   const icons = [
     'Activity', 'AlertTriangle', 'ArrowLeftRight', 'Beaker', 'Bell', 'BookOpen', 'Brain',
-    'Calculator', 'Calendar', 'CalendarDays', 'Check', 'ChevronDown', 'ChevronUp',
+    'Calculator', 'Calendar', 'CalendarDays', 'Check', 'CheckSquare', 'ChevronDown', 'ChevronUp',
     'Clock', 'Copy', 'Droplets', 'ExternalLink', 'Flame', 'FlaskConical', 'GlassWater',
     'Heart', 'Info', 'Leaf', 'Minus', 'Orbit', 'Phone', 'Pill', 'Plus', 'RotateCcw',
     'Scale', 'Search', 'Shield', 'Shuffle', 'Skull', 'SlidersHorizontal', 'Syringe',
@@ -560,10 +563,13 @@ Object.defineProperty(global, 'matchMedia', {
   })),
 });
 
-global.crypto = {
-  ...global.crypto,
-  randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
-} as any;
+Object.defineProperty(global, 'crypto', {
+  writable: true,
+  value: {
+    ...global.crypto,
+    randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
+  },
+});
 
 const originalConsoleError = console.error;
 console.error = (...args: any[]) => {

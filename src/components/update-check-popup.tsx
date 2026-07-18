@@ -6,6 +6,12 @@ import { X, Github, ArrowUpRight, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/tauri-bridge'
 
+// Suppression is intentionally SESSION-scoped (sessionStorage, not
+// localStorage): a fresh app launch starts a new browsing session, so the
+// stored snooze/dismiss is wiped and the update check always runs and is able
+// to re-show the popup. Within a single session the values persist, which is
+// what keeps the popup from re-appearing on every in-app route change (the
+// WebView remounts this component on navigation).
 const STORAGE_KEY = 'drugucopia-last-checked-version'
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
@@ -145,31 +151,32 @@ function shouldShowUpdate(currentVersion: string, latestVersion: string): boolea
   const recentlyDeferred =
     lastCheckTime !== null && Date.now() - lastCheckTime < CHECK_INTERVAL_MS
 
-  // A route transition can remount this component in the Android WebView.
-  // Respect the "Remind Me Later" timestamp even though that action does not
-  // permanently mark the release as seen.
+  // Route transitions can remount this component in the Android WebView.
+  // The suppression state lives in sessionStorage, so it is honored for the
+  // rest of the current session but is automatically cleared on the next app
+  // launch — which is what makes the update check run on every launch.
   return lastChecked !== latestVersion && !recentlyDeferred
 }
 
 function getLastCheckedVersion(): string | null {
   if (typeof window === 'undefined') return null
-  return window.localStorage.getItem(STORAGE_KEY)
+  return window.sessionStorage.getItem(STORAGE_KEY)
 }
 
 function setLastCheckedVersion(version: string) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, version)
+  window.sessionStorage.setItem(STORAGE_KEY, version)
 }
 
 function getLastCheckTime(): number | null {
   if (typeof window === 'undefined') return null
-  const time = window.localStorage.getItem(`${STORAGE_KEY}-time`)
+  const time = window.sessionStorage.getItem(`${STORAGE_KEY}-time`)
   return time ? parseInt(time, 10) : null
 }
 
 function setLastCheckTime(time: number) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(`${STORAGE_KEY}-time`, time.toString())
+  window.sessionStorage.setItem(`${STORAGE_KEY}-time`, time.toString())
 }
 
 export { GITHUB_REPO, GITHUB_RELEASES_URL, GITHUB_API_URL }

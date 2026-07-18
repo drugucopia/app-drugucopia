@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.9] - 2026-07-18
+
+### Changed
+- Update checker now checks on launch
+
 ## [0.2.8] - 2026-07-18
 
 ### Fixed
