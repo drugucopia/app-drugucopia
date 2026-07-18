@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { useMedia } from 'react-use'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BottomSheet } from '@/components/ui/BottomSheet'
+import { AlcoholCalculatorFields } from '@/components/alcohol-calculator-fields'
 
 interface DoseLoggerModalProps {
   open?: boolean
@@ -1809,6 +1810,14 @@ export function DoseLoggerModal({
             />
           </div>
         </div>
+
+        {selectedSubstance?.id === "alcohol" && (unit === "shot" || unit === "drink") && (
+          <AlcoholCalculatorFields
+            amount={amount}
+            onAmountChange={setAmount}
+            onUnitChange={setUnit}
+          />
+        )}
 
         <div className="grid gap-2">
           <Label>Route of Administration</Label>

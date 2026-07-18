@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Wine, Scale, Beaker, Info, ArrowRightLeft } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,6 +42,16 @@ export function AlcoholCalculatorFields({
   const [shotSizeId, setShotSizeId] = useState('us-single')
   const [drinkCount, setDrinkCount] = useState(amount ? parseFloat(amount) || 2 : 2)
   const [drinkUnit, setDrinkUnit] = useState<'shots' | 'drinks'>('shots')
+
+  // Sync drinkCount with amount prop (from parent form)
+  useEffect(() => {
+    if (amount) {
+      const parsed = parseFloat(amount)
+      if (!isNaN(parsed)) {
+        setDrinkCount(parsed)
+      }
+    }
+  }, [amount])
 
   // ─── Derived values ────────────────────────────────────────────────────────
   const beveragePreset = useMemo(() => getBeveragePreset(beverageId), [beverageId])
