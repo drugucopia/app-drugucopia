@@ -383,6 +383,23 @@ const mergeDoses = (
     allDeleted.delete(id)
   }
 
+  // "Undelete" protection for remote doses: if a remote dose was recently
+  // added/modified (within 10 minutes), it should NOT be deleted by a stale
+  // local `deleted` array entry — the user intentionally re-added it (e.g.
+  // via import after deleting all doses). This mirrors the local undelete
+  // protection above but applies to incoming remote doses.
+  const remoteUndeleted = new Set<string>()
+  for (const d of remote) {
+    const updateTime = getUpdateTime(d)
+    const isVeryRecent = Math.abs(nowMs - updateTime) < TEN_MINUTES_MS
+    if (isVeryRecent) {
+      remoteUndeleted.add(d.id)
+    }
+  }
+  for (const id of remoteUndeleted) {
+    allDeleted.delete(id)
+  }
+
   for (const d of local) {
     if (!allDeleted.has(d.id)) map.set(d.id, d)
   }
@@ -757,6 +774,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       console.debug('[sync] setDoc succeeded')
       // Clear pending changes flag on successful push
       setHasPendingChanges(false)
+      // Update the dose baseline to match what we just pushed. This ensures
+      // the baseline stays in sync with Firestore, which is critical for
+      // conflict detection on subsequent merges (especially after imports).
+      saveDoseBaseline(currentDoses)
     } catch (e) {
       console.error('[sync] Failed to push sync:', e)
       // Surface the error to the user — include the FULL error message so the

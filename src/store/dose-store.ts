@@ -63,8 +63,11 @@ export const useDoseStore = create<DoseStore>((set, get) => ({
   addDose: (dose) => {
     set((state) => {
       const updated = sortByTime([dose, ...state.doses])
+      const updatedDeleted = new Set(state.deletedIds)
+      updatedDeleted.delete(dose.id)
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-      return { doses: updated }
+      localStorage.setItem(DELETED_KEY, JSON.stringify([...updatedDeleted]))
+      return { doses: updated, deletedIds: updatedDeleted }
     })
 
     // Trigger reminder system — auto-start a timer if this substance has a schedule
@@ -103,8 +106,12 @@ export const useDoseStore = create<DoseStore>((set, get) => ({
   addDoses: (newDoses) => {
     set((state) => {
       const updated = sortByTime([...newDoses, ...state.doses])
+      const newIds = new Set(newDoses.map(d => d.id))
+      const updatedDeleted = new Set(state.deletedIds)
+      newIds.forEach(id => updatedDeleted.delete(id))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-      return { doses: updated }
+      localStorage.setItem(DELETED_KEY, JSON.stringify([...updatedDeleted]))
+      return { doses: updated, deletedIds: updatedDeleted }
     })
   },
 
@@ -115,8 +122,11 @@ export const useDoseStore = create<DoseStore>((set, get) => ({
       const newIds = new Set(newDoses.map(d => d.id))
       const kept = state.doses.filter(d => !newIds.has(d.id))
       const updated = sortByTime([...newDoses, ...kept])
+      const updatedDeleted = new Set(state.deletedIds)
+      newIds.forEach(id => updatedDeleted.delete(id))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-      return { doses: updated }
+      localStorage.setItem(DELETED_KEY, JSON.stringify([...updatedDeleted]))
+      return { doses: updated, deletedIds: updatedDeleted }
     })
   },
 
