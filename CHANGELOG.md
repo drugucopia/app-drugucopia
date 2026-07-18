@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5] - 2026-07-18
+
+### Changed
+- Alcohol Calculator auto converts logged alcohol into grams from shots or drinks.
+- Alcohol in grams shows an equivalency in shots in dose history
+- Message on dose logger to explain the conversion
+
 ## [0.2.4] - 2026-07-17
 
 ### Fixed

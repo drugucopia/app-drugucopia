@@ -870,7 +870,7 @@ export function ActiveDosesTimeline({ refreshTrigger }: ActiveDosesTimelineProps
                     return rg.doses.map(d => {
                       const doseId = d.id ?? d.doseTime.getTime().toString()
                       const isIsolated = selectedDose === doseId
-                      const formatted = formatDoseAmount(d.amount, d.unit)
+                      const formatted = formatDoseAmount(d.amount, d.unit, group.substanceName)
                       // Use fresh timing for active check
                       const elapsedMinsForDose = (now - d.doseTime.getTime()) / 60_000
                       const isDoseActive = elapsedMinsForDose >= 0 && elapsedMinsForDose < d.timings.offsetEnd
@@ -898,6 +898,9 @@ export function ActiveDosesTimeline({ refreshTrigger }: ActiveDosesTimelineProps
                             }}
                           />
                           <span>{formatted.amount} {formatUnit(formatted.unit, d.amount)}</span>
+                          {formatted.alcoholEquivalent && (
+                            <span className="text-neutral-content/70 text-[10px] ml-1">({formatted.alcoholEquivalent})</span>
+                          )}
                           <span className="text-neutral-content">{rg.route}</span>
 
                           {/* #5 — Phase progress indicator bar at bottom of chip */}

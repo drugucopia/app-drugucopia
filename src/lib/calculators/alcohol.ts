@@ -278,3 +278,44 @@ export function gramsToShots(
   const gramsPerShot = shotVolumeMl * (abv / 100) * ETHANOL_DENSITY_G_PER_ML;
   return roundTo(targetGrams / gramsPerShot, 2);
 }
+
+/**
+ * Convert grams of ethanol → equivalent drinks for common beverage types.
+ * Uses default shot sizes for each beverage type.
+ */
+export function gramsToDrinks(targetGrams: number): {
+  shots: { us: number; uk: number; eu: number };
+  standardDrinks: { us: number; uk: number; australian: number };
+} | null {
+  if (targetGrams <= 0) return null;
+
+  // Spirits: 40% ABV
+  const spiritShotUs = getShotSize('us-single')?.volumeMl ?? 44.36;
+  const spiritShotUk = getShotSize('uk-single')?.volumeMl ?? 25;
+  const spiritShotEu = getShotSize('eu-standard')?.volumeMl ?? 40;
+
+  // Wine: 12.5% ABV, 150ml glass
+  const wineGlassMl = 150;
+  const wineAbv = 12.5;
+
+  // Beer: 5% ABV, 355ml can
+  const beerCanMl = 355;
+  const beerAbv = 5;
+
+  const shots = {
+    us: roundTo(gramsToShots(targetGrams, spiritShotUs, 40) ?? 0, 2),
+    uk: roundTo(gramsToShots(targetGrams, spiritShotUk, 40) ?? 0, 2),
+    eu: roundTo(gramsToShots(targetGrams, spiritShotEu, 40) ?? 0, 2),
+  };
+
+  const wineGrams = wineGlassMl * (wineAbv / 100) * ETHANOL_DENSITY_G_PER_ML;
+  const beerGrams = beerCanMl * (beerAbv / 100) * ETHANOL_DENSITY_G_PER_ML;
+
+  const standardDrinks = {
+    us: roundTo(targetGrams / 14, 2),
+    uk: roundTo(targetGrams / 8, 2),
+    australian: roundTo(targetGrams / 10, 2),
+  };
+
+  return { shots, standardDrinks };
+}

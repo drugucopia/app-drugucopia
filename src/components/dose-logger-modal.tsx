@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Plus, Loader2, AlertTriangle, Zap, Clock, CalendarDays, X, ChevronDown, ChevronUp, Pin, PinOff, GripVertical, Pill } from 'lucide-react'
+import { Plus, Loader2, AlertTriangle, Zap, Clock, CalendarDays, X, ChevronDown, ChevronUp, Pin, PinOff, GripVertical, Pill, Scale } from 'lucide-react'
 import { substances, searchSubstancesRanked } from '@/lib/substances/index'
 import { useMedicationStore, getMedicationsAsSubstances, isMedicationSelectorId, getMedicationBySelectorId, toMedicationSelectorId } from '@/store/medication-store'
 import { useCustomSubstanceStore } from '@/store/custom-substance-store'
@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { useMedia } from 'react-use'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BottomSheet } from '@/components/ui/BottomSheet'
+import { AlcoholCalculatorFields } from '@/components/alcohol-calculator-fields'
 
 interface DoseLoggerModalProps {
   open?: boolean
@@ -794,6 +795,8 @@ export function DoseLoggerModal({
   const [optionalOpen, setOptionalOpen] = useState(false)
 
   const [durationOverride, setDurationOverride] = useState<Duration | null>(null)
+
+  const [alcoholConversion, setAlcoholConversion] = useState<string | null>(null)
 
   useEffect(() => {
     if (preselectedSubstanceId) setSubstanceId(preselectedSubstanceId)
@@ -1809,6 +1812,31 @@ export function DoseLoggerModal({
             />
           </div>
         </div>
+
+        {selectedSubstance?.id === "alcohol" && (unit === "shot" || unit === "drink") && (
+          <AlcoholCalculatorFields
+            amount={amount}
+            onAmountChange={(val) => {
+              setAmount(val)
+            }}
+            onUnitChange={(val) => {
+              setUnit(val)
+            }}
+            onConverted={(drinks, drinkUnit, grams) => {
+              setAlcoholConversion(`${drinks} ${drinkUnit} = ${grams}g pure ethanol`)
+            }}
+          />
+        )}
+
+        {alcoholConversion && (
+          <Alert className="bg-primary/5 text-primary border-primary/20">
+            <Scale className="h-4 w-4" />
+            <AlertTitle>Alcohol converted to grams</AlertTitle>
+            <AlertDescription>
+              {alcoholConversion}. Pure ethanol is tracked in grams for consistent dose logging and interaction checking.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid gap-2">
           <Label>Route of Administration</Label>

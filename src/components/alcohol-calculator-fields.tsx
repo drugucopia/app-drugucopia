@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Wine, Scale, Beaker, Info, ArrowRightLeft } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,8 @@ interface AlcoholCalculatorFieldsProps {
   onAmountChange: (amount: string) => void
   /** Callback to update the form's unit */
   onUnitChange: (unit: string) => void
+  /** Callback fired when conversion happens (drinks -> grams) */
+  onConverted?: (drinks: number, unit: 'shots' | 'drinks', grams: number) => void
 }
 
 /**
@@ -36,11 +38,12 @@ export function AlcoholCalculatorFields({
   amount,
   onAmountChange,
   onUnitChange,
+  onConverted,
 }: AlcoholCalculatorFieldsProps) {
   // ─── Calculator state ───────────────────────────────────────────────────────
   const [beverageId, setBeverageId] = useState('spirits')
   const [shotSizeId, setShotSizeId] = useState('us-single')
-  const [drinkCount, setDrinkCount] = useState(amount ? parseFloat(amount) || 2 : 2)
+  const [drinkCount, setDrinkCount] = useState(() => amount ? parseFloat(amount) || 2 : 2)
   const [drinkUnit, setDrinkUnit] = useState<'shots' | 'drinks'>('shots')
 
   // ─── Derived values ────────────────────────────────────────────────────────
@@ -54,6 +57,16 @@ export function AlcoholCalculatorFields({
     return shotsToGrams({ shots: drinkCount, shotVolumeMl: volumeMl, abv })
   }, [drinkCount, shotSize, beveragePreset])
 
+  // Auto-convert to grams on mount and when drinkCount changes (from parent)
+  useEffect(() => {
+    if (conversionResult && drinkCount > 0) {
+      const roundedGrams = roundTo(conversionResult.ethanolGrams, 2)
+      onAmountChange(String(roundedGrams))
+      onUnitChange('g')
+      onConverted?.(drinkCount, drinkUnit, roundedGrams)
+    }
+  }, [conversionResult, drinkCount, drinkUnit, onAmountChange, onUnitChange, onConverted])
+
   // ─── Handle drink count change ────────────────────────────────────────────
   const handleDrinkCountChange = (value: number) => {
     setDrinkCount(value)
@@ -65,6 +78,7 @@ export function AlcoholCalculatorFields({
       const roundedGrams = roundTo(result.ethanolGrams, 2)
       onAmountChange(String(roundedGrams))
       onUnitChange('g')
+      onConverted?.(value, drinkUnit, roundedGrams)
     }
   }
 
@@ -80,6 +94,7 @@ export function AlcoholCalculatorFields({
         const roundedGrams = roundTo(result.ethanolGrams, 2)
         onAmountChange(String(roundedGrams))
         onUnitChange('g')
+        onConverted?.(drinkCount, drinkUnit, roundedGrams)
       }
     }
   }
@@ -96,6 +111,7 @@ export function AlcoholCalculatorFields({
         const roundedGrams = roundTo(result.ethanolGrams, 2)
         onAmountChange(String(roundedGrams))
         onUnitChange('g')
+        onConverted?.(drinkCount, drinkUnit, roundedGrams)
       }
     }
   }

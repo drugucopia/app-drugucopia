@@ -1307,8 +1307,8 @@ export function DoseHistory() {
                                     <span className="flex items-center gap-1">
                                       <Droplets className="h-3 w-3 shrink-0" />
                                       {(() => {
-                                        const formatted = formatDoseAmount(dose.amount, dose.unit)
-                                        return `${formatted.amount} ${formatted.unit}`
+                                        const formatted = formatDoseAmount(dose.amount, dose.unit, dose.substanceName)
+                                        return `${formatted.amount} ${formatted.unit}${formatted.alcoholEquivalent ? ` ${formatted.alcoholEquivalent}` : ''}`
                                       })()}
                                     </span>
                                     <span className="flex items-center gap-1">
