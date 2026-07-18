@@ -3,6 +3,8 @@
 *.idsig
 *.rules
 b64
+scripts/bump-version.sh
+ignore/
 
 # dependencies
 <<<<<<< HEAD

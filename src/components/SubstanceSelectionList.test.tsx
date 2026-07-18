@@ -4,8 +4,12 @@ import { SubstanceSelectionList } from '@/components/SubstanceSelectionList';
 import { useToleranceNotificationStore } from '@/store/tolerance-notification-store';
 import { getAllSubstances } from '@/lib/substances';
 
-vi.mock('@/store/tolerance-notification-store');
-vi.mock('@/lib/substances');
+vi.mock('@/store/tolerance-notification-store', () => ({
+  useToleranceNotificationStore: vi.fn(),
+}));
+vi.mock('@/lib/substances', () => ({
+  getAllSubstances: vi.fn(),
+}));
 
 describe('SubstanceSelectionList', () => {
   const mockSubstances = [

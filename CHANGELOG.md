@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.3] - 2026-07-17
+
+### Fixed
+- Test suite module isolation failure
+- invalid vitest mock sig in component test
+- dead dependency (prisma)
+- duplicate app router routes
+- playwright test file conflict
+
 ## [0.2.2] - 2026-07-17
 
 ### Fixed

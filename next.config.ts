@@ -26,7 +26,6 @@ if (isGithubActions) {
 }
 
 const nextConfig: NextConfig = {
-  /* config options here */
   output: "export",
   trailingSlash: true,
   images: {
@@ -38,6 +37,20 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   env: {
     NEXT_PUBLIC_BASE_PATH: "",
+  },
+  async redirects() {
+    return [
+      {
+        source: "/dxm-calculator",
+        destination: "/calculators/dxm",
+        permanent: true,
+      },
+      {
+        source: "/kratom-calculator",
+        destination: "/calculators/kratom",
+        permanent: true,
+      },
+    ];
   },
 };
 

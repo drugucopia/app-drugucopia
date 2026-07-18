@@ -349,7 +349,7 @@ describe("getSubstanceId helper", () => {
 });
 
 describe("checkAndNotify per-substance logic", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     // Mock localStorage for dose store
     const mockStorage: Record<string, string> = {};
     global.localStorage = {
@@ -365,32 +365,31 @@ describe("checkAndNotify per-substance logic", () => {
       }),
     } as unknown as Storage;
 
-    // Reset stores with zero cooldown to avoid cooldown issues in tests
-    useToleranceNotificationStore.setState({
-      settings: { ...DEFAULT_SETTINGS, notificationCooldownMinutes: 0 },
-      isLoaded: true,
-      initialize: () => () => {},
-      updateSettings: () => {},
-    });
-    useDoseStore.setState({ doses: [], isLoaded: true });
+    // Reset stores by setting localStorage and re-initializing
+    localStorage.setItem(
+      "drugucopia-tolerance-notification-settings",
+      JSON.stringify({
+        ...DEFAULT_SETTINGS,
+        notificationCooldownMinutes: 0,
+      }),
+    );
+    localStorage.setItem("drugucopia-dose-logs", "[]");
+    localStorage.setItem("drugucopia-deleted-ids", "[]");
+
+    useToleranceNotificationStore.getState().initialize();
+    useDoseStore.getState().initialize();
 
     vi.useFakeTimers();
-    vi.resetModules();
+    vi.clearAllMocks();
+  });
+    useDoseStore.getState().clearAllDoses();
 
-    // Re-import modules after reset
-    const mod = await import("@/lib/tolerance-notifications");
-    global.checkAndNotify = mod.checkAndNotify;
-    const storeMod = await import("@/store/tolerance-notification-store");
-    global.useToleranceNotificationStore =
-      storeMod.useToleranceNotificationStore;
-    const doseStoreMod = await import("@/store/dose-store");
-    global.useDoseStore = doseStoreMod.useDoseStore;
+    vi.useFakeTimers();
+    vi.clearAllMocks();
   });
 
-  afterEach(() => vi.useRealTimers());
-
   it("skips substance not in enabledSubstances", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       enabledSubstances: { caffeine: false }, // explicitly disabled
@@ -398,7 +397,7 @@ describe("checkAndNotify per-substance logic", () => {
     });
 
     // Add caffeine dose that would trigger high tolerance
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -415,7 +414,7 @@ describe("checkAndNotify per-substance logic", () => {
       .mockImplementation((...args) => {
         calls.push(args);
       });
-    await global.checkAndNotify(true);
+    await checkAndNotify(true);
 
     // Should not send notification for caffeine
     const caffeineCalls = calls.filter((call) =>
@@ -428,14 +427,14 @@ describe("checkAndNotify per-substance logic", () => {
     // The user's complaint: a substance that is NOT in the enabledSubstances
     // map at all (i.e., never explicitly selected) should NOT trigger a
     // notification, even though the global notifyOnHigh is on.
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       enabledSubstances: {}, // empty — nothing selected
       substanceThresholds: {},
     });
 
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -452,7 +451,7 @@ describe("checkAndNotify per-substance logic", () => {
       .mockImplementation((...args) => {
         calls.push(args);
       });
-    await global.checkAndNotify(true);
+    await checkAndNotify(true);
 
     // No notification should be sent because nothing is selected.
     const caffeineCalls = calls.filter((call) =>
@@ -467,14 +466,14 @@ describe("checkAndNotify per-substance logic", () => {
     const sendGenericNotification = (await import("@/lib/tauri-bridge"))
       .sendGenericNotification as vi.Mock;
 
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       enabledSubstances: { caffeine: true, alcohol: true },
       substanceThresholds: {},
     });
 
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -484,7 +483,7 @@ describe("checkAndNotify per-substance logic", () => {
           timestamp: new Date().toISOString(),
         }),
       );
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -496,7 +495,7 @@ describe("checkAndNotify per-substance logic", () => {
       );
 
     vi.spyOn(console, "log").mockImplementation(() => {});
-    await global.checkAndNotify(true);
+    await checkAndNotify(true);
 
     expect(sendGenericNotification).toHaveBeenCalledTimes(1);
     const [title, body, tag] = sendGenericNotification.mock.calls[0];
@@ -509,7 +508,7 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("uses global threshold when no override", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       notifyOnLow: false,
@@ -517,7 +516,7 @@ describe("checkAndNotify per-substance logic", () => {
       substanceThresholds: {}, // no override
     });
 
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -534,7 +533,7 @@ describe("checkAndNotify per-substance logic", () => {
       .mockImplementation((...args) => {
         calls.push(args);
       });
-    await global.checkAndNotify(true);
+    await checkAndNotify(true);
 
     const caffeineCalls = calls.filter((call) =>
       call.some((arg) => typeof arg === "string" && arg.includes("Caffeine")),
@@ -543,14 +542,14 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("uses override when notifyOnHigh=false for substance", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true, // global says yes
       enabledSubstances: { caffeine: true },
       substanceThresholds: { caffeine: { notifyOnHigh: false } }, // override says no
     });
 
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -567,7 +566,7 @@ describe("checkAndNotify per-substance logic", () => {
       .mockImplementation((...args) => {
         calls.push(args);
       });
-    await global.checkAndNotify(true);
+    await checkAndNotify(true);
 
     const caffeineCalls = calls.filter((call) =>
       call.some((arg) => typeof arg === "string" && arg.includes("Caffeine")),
@@ -576,14 +575,14 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("uses override when notifyOnHigh=true for substance but global=false", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: false, // global says no
       enabledSubstances: { caffeine: true },
       substanceThresholds: { caffeine: { notifyOnHigh: true } }, // override says yes
     });
 
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -600,7 +599,7 @@ describe("checkAndNotify per-substance logic", () => {
       .mockImplementation((...args) => {
         calls.push(args);
       });
-    await global.checkAndNotify(true);
+    await checkAndNotify(true);
 
     const caffeineCalls = calls.filter((call) =>
       call.some((arg) => typeof arg === "string" && arg.includes("Caffeine")),
@@ -609,13 +608,13 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("returns a ToleranceCheckResult with the right shape", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       enabledSubstances: { caffeine: true },
       substanceThresholds: {},
     });
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -627,7 +626,7 @@ describe("checkAndNotify per-substance logic", () => {
       );
     vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const result = await global.checkAndNotify({
+    const result = await checkAndNotify({
       force: true,
       bypassCooldown: true,
     });
@@ -644,13 +643,13 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("returns a useful reason when nothing is selected", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       enabledSubstances: {}, // nothing selected
       substanceThresholds: {},
     });
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -662,7 +661,7 @@ describe("checkAndNotify per-substance logic", () => {
       );
     vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const result = await global.checkAndNotify({
+    const result = await checkAndNotify({
       force: true,
       bypassCooldown: true,
     });
@@ -673,7 +672,7 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("returns a useful reason when selected substances are below threshold", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       notifyOnLow: false,
@@ -684,7 +683,7 @@ describe("checkAndNotify per-substance logic", () => {
     // Old dose — tolerance should be at baseline, which is below the High threshold.
     const oldDate = new Date();
     oldDate.setDate(oldDate.getDate() - 100);
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -696,7 +695,7 @@ describe("checkAndNotify per-substance logic", () => {
       );
     vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const result = await global.checkAndNotify({
+    const result = await checkAndNotify({
       force: true,
       bypassCooldown: true,
     });
@@ -709,14 +708,14 @@ describe("checkAndNotify per-substance logic", () => {
   });
 
   it("bypasses cooldown when bypassCooldown=true (Issue: Test Check Now button)", async () => {
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       notificationCooldownMinutes: 1440, // 24 hours
       enabledSubstances: { caffeine: true },
       substanceThresholds: {},
     });
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
@@ -729,7 +728,7 @@ describe("checkAndNotify per-substance logic", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
 
     // First call WITHOUT bypass — sends and records cooldown.
-    const r1 = await global.checkAndNotify({
+    const r1 = await checkAndNotify({
       force: true,
       bypassCooldown: false,
     });
@@ -737,7 +736,7 @@ describe("checkAndNotify per-substance logic", () => {
 
     // Second call WITHOUT bypass — should be skipped due to cooldown
     // recorded by the first call.
-    const r2 = await global.checkAndNotify({
+    const r2 = await checkAndNotify({
       force: true,
       bypassCooldown: false,
     });
@@ -745,7 +744,7 @@ describe("checkAndNotify per-substance logic", () => {
     expect(r2.skippedCooldown).toBe(1);
 
     // Third call WITH bypass — should send again despite cooldown.
-    const r3 = await global.checkAndNotify({
+    const r3 = await checkAndNotify({
       force: true,
       bypassCooldown: true,
     });
@@ -754,7 +753,7 @@ describe("checkAndNotify per-substance logic", () => {
     // Verify the bypass call did NOT extend the cooldown: a fourth call
     // WITHOUT bypass should still be skipped (proving the bypass didn't
     // re-record) — and we verify by checking skippedCooldown is still 1.
-    const r4 = await global.checkAndNotify({
+    const r4 = await checkAndNotify({
       force: true,
       bypassCooldown: false,
     });
@@ -766,14 +765,14 @@ describe("checkAndNotify per-substance logic", () => {
     const { forceToleranceCheck } =
       await import("@/lib/tolerance-notifications");
 
-    global.useToleranceNotificationStore.getState().updateSettings({
+    useToleranceNotificationStore.getState().updateSettings({
       enabled: true,
       notifyOnHigh: true,
       notificationCooldownMinutes: 1440,
       enabledSubstances: { caffeine: true },
       substanceThresholds: {},
     });
-    global.useDoseStore
+    useDoseStore
       .getState()
       .addDose(
         createDose({
