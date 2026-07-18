@@ -73,7 +73,7 @@ jobs:
         run: bun install
 
       - name: Generate app icons
-        run: bun run tauri icon public/logo-512.png
+        run: bun run tauri icon public/logo.png
 
       - name: Verify Firebase env vars are present
         run: |
