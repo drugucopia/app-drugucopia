@@ -23,6 +23,7 @@ import {
   differenceInCalendarDays,
   parseISO,
 } from "date-fns";
+import { X509Certificate } from "crypto";
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -751,13 +752,11 @@ export function estimateTolerance(doses: DoseLog[]): ToleranceEstimate[] {
   for (const d of doses) {
     const group = groupFor.get(d.substanceName) ?? d.substanceName;
     if (!dosesByGroup.has(group)) dosesByGroup.set(group, []);
-    dosesByGroup
-      .get(group)!
-      .push({
-        name: d.substanceName,
-        dose: d,
-        ts: safeDate(d.timestamp).getTime(),
-      });
+    dosesByGroup.get(group)!.push({
+      name: d.substanceName,
+      dose: d,
+      ts: safeDate(d.timestamp).getTime(),
+    });
   }
 
   // ── Run the decay simulation per group ──
@@ -831,20 +830,18 @@ export function estimateTolerance(doses: DoseLog[]): ToleranceEstimate[] {
       ? Math.max(0, (now - lastTs) / (1000 * 60 * 60 * 24))
       : 0;
 
-    // Days until tolerance drops below ~25% (the PW "baseline" threshold,
-    // calibrated from PW data: baseline ≈ 2 half-lives → 25% remaining).
-    // Verified: amphetamine 5d half / 10.5d baseline = 2.1x, cannabis 10.5d/17.5d
-    // = 1.7x, MDMA 30d/75d = 2.5x → average ~2x = 25% remaining.
+    // Days until tolerance drops below ~5% (the PW "baseline" threshold,
+    // calibrated from PW data: baseline ≈ 2 half-lives → 5% remaining).
     const decayPerDay = Math.log(2) / halfLifeDays;
-    const targetLevel = 0.25;
+    const targetLevel = 0.05;
     const daysToBaseline =
       level > targetLevel ? Math.log(level / targetLevel) / decayPerDay : 0;
 
     let levelLabel: ToleranceEstimate["level"];
-    if (level < 0.25) levelLabel = "baseline";
-    else if (level < 0.45) levelLabel = "low";
-    else if (level < 0.65) levelLabel = "moderate";
-    else if (level < 0.85) levelLabel = "high";
+    if (level < 0.05) levelLabel = "baseline";
+    else if (level < 0.2) levelLabel = "low";
+    else if (level < 0.5) levelLabel = "moderate";
+    else if (level < 0.75) levelLabel = "high";
     else levelLabel = "very-high";
 
     const dosesLast30Days = subsDoses.filter(
