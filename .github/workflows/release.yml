@@ -72,6 +72,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Generate app icons
+        run: bun run tauri icon public/logo-512.png
+
       - name: Verify Firebase env vars are present
         run: |
           echo "Checking Firebase env vars..."
