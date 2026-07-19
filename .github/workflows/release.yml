@@ -72,9 +72,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Generate app icons
-        run: bun run tauri icon public/logo.png
-
       - name: Verify Firebase env vars are present
         run: |
           echo "Checking Firebase env vars..."
@@ -102,6 +99,38 @@ jobs:
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
           NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
 
+      # ── FIX: Icon generation MUST happen AFTER gen/android exists ─────
+      # Previously we generated icons BEFORE android init, so mipmap folders
+      # never received the new icons and APK showed default/stale icon.
+      # Now we init Android first, then generate icons (which populates both
+      # src-tauri/icons and gen/android/res/mipmap-*).
+
+      - name: Initialize Android project (so icon gen can populate mipmap)
+        run: |
+          if [ ! -d src-tauri/gen/android ]; then
+            echo "Initializing Android project..."
+            npx tauri android init --config src-tauri/tauri.conf.json || echo "Init may have failed, continuing"
+          else
+            echo "Android project already exists"
+          fi
+
+      - name: Generate app icons (from public/logo-512.png - best quality)
+        run: |
+          # Use 512px source - much better than 192px logo.png. Generates:
+          # - src-tauri/icons/* (desktop)
+          # - src-tauri/gen/android/.../mipmap-* (Android launcher)
+          # - src-tauri/gen/apple/... (if exists)
+          if [ -f public/logo-512.png ]; then
+            echo "Generating icons from public/logo-512.png"
+            bun run tauri icon public/logo-512.png
+          else
+            echo "logo-512.png not found, falling back to logo.png"
+            bun run tauri icon public/logo.png
+          fi
+          echo "Listing generated icons:"
+          ls -lh src-tauri/icons/ | head -20
+          ls -lh src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ || echo "No mipmap yet"
+
       - name: Setup sccache
         uses: Mozilla-Actions/sccache-action@v0.0.10
         with:
@@ -121,6 +150,17 @@ jobs:
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
           NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
           
+      - name: Verify APK contains correct icon (debug)
+        run: |
+          echo "Checking mipmap in final project:"
+          ls -R src-tauri/gen/android/app/src/main/res/mipmap-* | head -50
+          echo "Checking APK icon if aapt available:"
+          APK=$(find src-tauri/gen/android -name "*.apk" | head -1)
+          if [ -n "$APK" ]; then
+            echo "APK: $APK"
+            unzip -l "$APK" | grep -i "mipmap\|ic_launcher" | head -20 || true
+          fi
+
       - name: Find APK/AAB output
         run: |
           echo "Searching for APK/AAB files..."
@@ -142,7 +182,6 @@ jobs:
       - name: Prepare signed APK for release
         id: set_version
         run: |
-          # Find the signed APK
           SIGNED_APK=$(find . -name "*unsigned-signed.apk" | head -1)
           if [ -z "$SIGNED_APK" ]; then
             echo "No signed APK found"
@@ -150,12 +189,10 @@ jobs:
           fi
           echo "Found signed APK: $SIGNED_APK"
           
-          # Get version from package.json (use as-is)
           VERSION=$(node -e "const p=require('./package.json'); console.log(p.version)")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           
-          # Copy and rename
           mkdir -p release-apk
           cp "$SIGNED_APK" "release-apk/drugucopia-mobile-${VERSION}.apk"
           echo "Created: release-apk/drugucopia-mobile-${VERSION}.apk"

@@ -26,6 +26,82 @@ GREEN='\033[0;32m'
 NC='\033[0m'
 
 info()  { echo -e "${CYAN}[patch]${NC} $*"; }
+
+# --- ICON FIX: Sync launcher icons from public/ to Android mipmap ---
+resolve_icon_src() {
+  for cand in "public/logo-512.png" "public/logo.png" "src-tauri/icons/icon.png"; do
+    if [ -f "$PROJECT_ROOT/$cand" ]; then
+      echo "$PROJECT_ROOT/$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ICON_SRC="$(resolve_icon_src || true)"
+if [ -n "${ICON_SRC:-}" ]; then
+  info "Syncing launcher icons from $ICON_SRC..."
+  if command -v bun >/dev/null 2>&1; then
+    bun run tauri icon "$ICON_SRC" 2>/dev/null && ok "Tauri icon via bun" || info "bun icon failed"
+  elif command -v npx >/dev/null 2>&1; then
+    npx tauri icon "$ICON_SRC" 2>/dev/null && ok "Tauri icon via npx" || info "npx icon failed"
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    PROJECT_ROOT="$PROJECT_ROOT" python3 - <<'PYEOF'
+import os, sys, pathlib
+try:
+    from PIL import Image
+except ImportError:
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "Pillow"])
+    from PIL import Image
+pr = pathlib.Path(os.environ.get("PROJECT_ROOT", "."))
+cands = [pr / "public/logo-512.png", pr / "public/logo.png", pr / "src-tauri/icons/icon.png"]
+src = next((c for c in cands if c.exists()), None)
+if not src:
+    print("No source")
+    sys.exit(0)
+img = Image.open(src).convert("RGBA")
+gen = pr / "src-tauri/gen/android/app/src/main/res"
+cfgs = {
+    "mipmap-mdpi": {"launcher": 48, "foreground": 108},
+    "mipmap-hdpi": {"launcher": 72, "foreground": 162},
+    "mipmap-xhdpi": {"launcher": 96, "foreground": 216},
+    "mipmap-xxhdpi": {"launcher": 144, "foreground": 324},
+    "mipmap-xxxhdpi": {"launcher": 192, "foreground": 432},
+}
+for folder, sz in cfgs.items():
+    d = gen / folder
+    d.mkdir(parents=True, exist_ok=True)
+    for name in ["ic_launcher.png", "ic_launcher_round.png"]:
+        r = img.resize((sz["launcher"], sz["launcher"]), Image.LANCZOS)
+        r.save(d / name, "PNG")
+    r = img.resize((sz["foreground"], sz["foreground"]), Image.LANCZOS)
+    r.save(d / "ic_launcher_foreground.png", "PNG")
+print("Manual sync done")
+# desktop icons
+dd = pr / "src-tauri/icons"
+dd.mkdir(parents=True, exist_ok=True)
+for size, fname in [(32, "32x32.png"), (32, "32.png"), (16, "16.png"), (48, "48.png"), (64, "64x64.png"), (128, "128x128.png"), (256, "128x128@2x.png"), (256, "256.png"), (512, "icon.png")]:
+    try:
+        r = img.resize((size, size), Image.LANCZOS)
+        r.save(dd / fname, "PNG")
+    except Exception as e:
+        print(f"fail {fname} {e}")
+try:
+    ico_path = dd / "icon.ico"
+    sizes = [16,24,32,48,64,256]
+    imgs = [img.resize((s,s), Image.LANCZOS) for s in sizes]
+    imgs[-1].save(ico_path, format="ICO", sizes=[(s,s) for s in sizes])
+    print(f"ico {ico_path}")
+except Exception as e:
+    print(f"ico fail {e}")
+PYEOF
+    ok "Manual icon sync done"
+  fi
+fi
+
+
 ok()    { echo -e "${GREEN}[patch]${NC} $*"; }
 
 # ─── 1. Install OngoingNotificationHelper.kt ──────────────────────────────────

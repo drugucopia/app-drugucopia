@@ -229,9 +229,89 @@ if [ ! -d "$GEN_ANDROID_DIR" ]; then
   NEW_INIT=1
 fi
 
+
+# --- ICON FIX: Ensure launcher icons from public/ are synced to Android mipmap ---
+# Root cause: tauri icon was run BEFORE android init in CI. When gen/android
+# does not exist, tauri icon only populates src-tauri/icons, not mipmap.
+# Fix: re-run icon generation AFTER init, so both desktop and Android get new icons.
+resolve_icon_src() {
+  for cand in "public/logo-512.png" "public/logo.png" "public/logo-192.png" "src-tauri/icons/icon.png"; do
+    if [ -f "$PROJECT_ROOT/$cand" ]; then
+      echo "$PROJECT_ROOT/$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ICON_SRC_PATH="$(resolve_icon_src || true)"
+
+if [ -n "${ICON_SRC_PATH:-}" ]; then
+  info "Syncing launcher icons from $ICON_SRC_PATH..."
+  ICON_GENERATED=0
+  if command -v bun >/dev/null 2>&1; then
+    if bun run tauri icon "$ICON_SRC_PATH" 2>&1 | tail -n 20; then
+      ICON_GENERATED=1
+      ok "Icons generated via bun"
+    fi
+  fi
+  if [ "$ICON_GENERATED" = "0" ]; then
+    if npx tauri icon "$ICON_SRC_PATH" 2>&1 | tail -n 20; then
+      ICON_GENERATED=1
+      ok "Icons generated via npx tauri"
+    fi
+  fi
+  # Fallback: manual Python resize into mipmap folders
+  if [ "$ICON_GENERATED" = "0" ] || [ ! -d "$GEN_ANDROID_DIR/app/src/main/res/mipmap-hdpi" ]; then
+    info "Running manual mipmap sync (Python)..."
+    if command -v python3 >/dev/null 2>&1; then
+      PROJECT_ROOT="$PROJECT_ROOT" python3 - <<'PYEOF'
+import os, sys, pathlib
+try:
+    from PIL import Image
+except ImportError:
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "Pillow"])
+    from PIL import Image
+
+pr = pathlib.Path(os.environ.get("PROJECT_ROOT", "."))
+candidates = [pr / "public/logo-512.png", pr / "public/logo.png", pr / "public/logo-192.png", pr / "src-tauri/icons/icon.png"]
+src = next((c for c in candidates if c.exists()), None)
+if not src:
+    print("No icon source for manual sync")
+    sys.exit(0)
+img = Image.open(src).convert("RGBA")
+gen = pr / "src-tauri/gen/android/app/src/main/res"
+cfgs = {
+    "mipmap-mdpi": {"launcher": 48, "foreground": 108},
+    "mipmap-hdpi": {"launcher": 72, "foreground": 162},
+    "mipmap-xhdpi": {"launcher": 96, "foreground": 216},
+    "mipmap-xxhdpi": {"launcher": 144, "foreground": 324},
+    "mipmap-xxxhdpi": {"launcher": 192, "foreground": 432},
+}
+for folder, sz in cfgs.items():
+    d = gen / folder
+    d.mkdir(parents=True, exist_ok=True)
+    for name in ["ic_launcher.png", "ic_launcher_round.png"]:
+        o = d / name
+        r = img.resize((sz["launcher"], sz["launcher"]), Image.LANCZOS)
+        r.save(o, "PNG")
+    fg = d / "ic_launcher_foreground.png"
+    r = img.resize((sz["foreground"], sz["foreground"]), Image.LANCZOS)
+    r.save(fg, "PNG")
+print("Manual mipmap sync done")
+PYEOF
+      ok "Manual sync complete"
+    fi
+  fi
+else
+  info "No icon source found, skipping icon sync"
+fi
+
+
 # Always apply Android patches after init (ensures INTERNET permission for Firebase, dark theme, etc)
 if [ -f "$PROJECT_ROOT/scripts/patch-android.sh" ]; then
-  if [ "$NEW_INIT" = "1" ] || [ ! -f "$GEN_ANDROID_DIR/app/src/main/res/values/styles.xml" ]; then
+  if [ "$NEW_INIT" = "1" ] || [ ! -f "$GEN_ANDROID_DIR/app/src/main/res/values/styles.xml" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then
     info "Applying Android patches (INTERNET permission, theme, etc)..."
     bash "$PROJECT_ROOT/scripts/patch-android.sh" || info "Patch script failed, continuing anyway"
   fi
@@ -288,6 +368,14 @@ case "$ACTION" in
 
   build)
     info "Building release APK for ARM64 and ARMv7..."
+    if [ -n "${ICON_SRC_PATH:-}" ] && [ -f "$ICON_SRC_PATH" ]; then
+      info "Final icon refresh before build..."
+      if command -v bun >/dev/null 2>&1; then
+        bun run tauri icon "$ICON_SRC_PATH" 2>/dev/null || true
+      else
+        npx tauri icon "$ICON_SRC_PATH" 2>/dev/null || true
+      fi
+    fi
     npx tauri android build \
       --config "$CONFIG_FILE" \
       --apk \

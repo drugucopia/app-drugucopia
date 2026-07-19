@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.11] - 2026-07-18
+
+### Fixed
+- icon generation
+
 ## [0.2.10] - 2026-07-18
 
 ### Changed
