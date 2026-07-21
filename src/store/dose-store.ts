@@ -23,6 +23,8 @@ interface DoseStore {
 const sortByTime = (doses: DoseLog[]) =>
   [...doses].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
+export const useDoses = () => useDoseStore((state) => state.doses)
+export const useDeletedIds = () => useDoseStore((state) => state.deletedIds)
 export const useDoseStore = create<DoseStore>((set, get) => ({
   doses: [],
   deletedIds: new Set(),
